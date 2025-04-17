@@ -6,6 +6,16 @@
 
 ### ✨ Fabulous New Features ✨
 
+* simplify release detection by focusing on branch name instead of PR title ([8a19689](https://github.com/atikayda/release-manager/commit/8a19689c738553c7363b914e31956e869dbf7bb5))
+
+
+
+## 0.0.1 (2025-04-17)
+
+## [0.0.1](https://github.com/atikayda/release-manager/compare/v0.0.0...v0.0.1) (2025-04-17)
+
+### ✨ Fabulous New Features ✨
+
 * add support for detecting stealth PR merges and bump commands ([057d025](https://github.com/atikayda/release-manager/commit/057d025428a8f2dc5c06ad4ff2b79595611ca912))
 
 ### 🛠️ Bug Fixes & Polish 💅
