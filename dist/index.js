@@ -60174,7 +60174,7 @@ const github = __nccwpck_require__(5438);
 const fs = __nccwpck_require__(7147);
 const path = __nccwpck_require__(1017);
 const semver = __nccwpck_require__(1383);
-const { readConfig, validateConfig } = __nccwpck_require__(1477);
+const { getConfig, validateConfig } = __nccwpck_require__(1477);
 const { checkForBumpCommands } = __nccwpck_require__(3200);
 const { detectReleasePR } = __nccwpck_require__(5162);
 const { findBumpCommandsInPR, applyBumpCommand } = __nccwpck_require__(9742);
@@ -60220,7 +60220,7 @@ async function run() {
     const context = github.context;
     
     // Load and validate config
-    const config = await readConfig(configFilePath);
+    const config = await getConfig(configFilePath);
     validateConfig(config);
     
     core.info('Configuration loaded and validated');
