@@ -59984,6 +59984,10 @@ async function run() {
     startGroup('✨ Run Type Detection - What are we serving today? ✨');
     const isPRMerge = context.payload.pull_request && context.payload.action === 'closed' && context.payload.pull_request.merged;
     
+    // Initialize these outside the if block so they're available in the wider scope
+    let isTitleMatch = false;
+    let titleMatch = null;
+    
     if (isPRMerge) {
       core.info(`Detected PR merge event: PR #${context.payload.pull_request.number}`);
       core.info(`PR Title: ${context.payload.pull_request.title}`);
@@ -59999,8 +60003,8 @@ async function run() {
       
       // Create regex and test against PR title
       const titleRegex = new RegExp(titlePattern);
-      const titleMatch = context.payload.pull_request.title.match(titleRegex);
-      const isTitleMatch = !!titleMatch;
+      titleMatch = context.payload.pull_request.title.match(titleRegex);
+      isTitleMatch = !!titleMatch;
       
       if (isTitleMatch && titleMatch[1]) {
         core.info(`PR title matches our fabulous format! Extracted version: ${titleMatch[1]} 💅`);
