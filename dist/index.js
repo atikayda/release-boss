@@ -57168,6 +57168,8 @@ module.exports = {
 async function detectReleasePR(octokit, context, config) {
   const { owner, repo } = context.repo;
   
+  console.log(`👌 STEALTH PR DETECTION ACTIVATED - Looking for sneaky PR merges disguised as pushes! 👩‍🕵️‍♀️`);
+  
   // Only check push events
   if (context.eventName !== 'push') {
     console.log('Not a push event, skipping stealth PR detection 💅');
@@ -57303,6 +57305,8 @@ async function findBumpCommandsInPR(octokit, context, prNumber) {
     console.log('No PR number provided, skipping bump command check 🤷‍♀️');
     return { hasBumpCommand: false };
   }
+  
+  console.log(`👌 BUMP COMMAND CHECK RUNNING FOR PR #${prNumber} - I'm on the hunt for those sassy commands! 💃`);
   
   console.log(`💋 Checking comments on PR #${prNumber} for bump commands...`);
   
@@ -60230,34 +60234,35 @@ async function run() {
     const isPRMerge = context.payload.pull_request && context.payload.action === 'closed' && context.payload.pull_request.merged;
     
     // Initialize these outside the if block so they're available in the wider scope
-    let isTitleMatch = false;
-    let titleMatch = null;
     let detectedPR = null;
+    let isReleasePR = false;
+    let branchVersion = null;
     
     if (isPRMerge) {
       core.info(`Detected PR merge event: PR #${context.payload.pull_request.number}`);
       core.info(`PR Title: ${context.payload.pull_request.title}`);
       core.info(`PR was merged: ${context.payload.pull_request.merged}`);
-      core.info(`Expected PR title format: ${config.pullRequestTitle.replace('{version}', 'X.Y.Z')}`);
       
-      // Convert our PR title template into a regex pattern by replacing {version} with a semver match
-      // First escape all regex special chars in the template
-      const escapedTemplate = config.pullRequestTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Get the head branch name - this is more reliable than the PR title
+      const headBranch = context.payload.pull_request.head.ref;
+      core.info(`PR was merged from branch: ${headBranch}`);
       
-      // Then replace the escaped {version} with a semver capture group
-      const titlePattern = escapedTemplate.replace(/\{version\}/g, '([0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?)');
-      
-      // Create regex and test against PR title
-      const titleRegex = new RegExp(titlePattern);
-      titleMatch = context.payload.pull_request.title.match(titleRegex);
-      isTitleMatch = !!titleMatch;
-      
-      if (isTitleMatch && titleMatch[1]) {
-        core.info(`PR title matches our fabulous format! Extracted version: ${titleMatch[1]} 💅`);
+      // Check if this is a staging branch merge (our release PR pattern)
+      if (headBranch.startsWith(`${config.stagingBranch}-`)) {
+        core.info(`This PR is from a staging branch! That's our release pattern, honey! 💅`);
+        isReleasePR = true;
+        
+        // Extract version from staging branch name
+        branchVersion = extractVersionFromStagingBranch(headBranch, config.stagingBranch);
+        
+        if (branchVersion) {
+          core.info(`Extracted version ${branchVersion} from staging branch name ${headBranch} 💃`);
+        } else {
+          core.info(`Couldn't extract version from branch name ${headBranch} - that's weird! 🤔`);
+        }
       } else {
-        core.info(`PR title doesn't match our template pattern 😱`);
+        core.info(`This PR is not from a staging branch, so it's not a release PR 🤷‍♀️`);
       }
-      core.info(`PR title matches expected format: ${isTitleMatch}`);
     } else {
       core.info('Regular push event detected, not a PR merge');
       
@@ -60276,10 +60281,10 @@ async function run() {
         core.info(`OMG! I found a stealth PR merge! PR #${detectedPR.number} from ${detectedPR.headBranch} 💅`);
         core.info(`PR Title: ${detectedPR.title}`);
         
-        // Since we found a stealth PR merge, let's extract version and check title match
+        // Since we found a stealth PR merge, let's extract version from the branch name
         if (detectedPR.version) {
-          titleMatch = [null, detectedPR.version]; // Mock the regex match array format
-          isTitleMatch = true;
+          branchVersion = detectedPR.version;
+          isReleasePR = true;
           core.info(`Extracted version ${detectedPR.version} from branch name ${detectedPR.headBranch} 💃`);
         }
       } else {
@@ -60327,40 +60332,38 @@ async function run() {
       endGroup();
     }
     
-    if ((isPRMerge || detectedPR) && isTitleMatch) {
+    // Process the PR if it's a release PR (from a staging branch) OR if we have a bump command
+    // This is much simpler than trying to match PR titles! 💅
+    if ((isPRMerge || detectedPR) && (isReleasePR || bumpCommandResult.hasBumpCommand)) {
       // This is a merged release PR - create a tag! 💅
       core.info('Detected merge of release PR - time to make it official! 💍');
       
-      // Figure out where to get version info from based on whether this is a regular PR merge or a stealth merge
-      let titleVersion, headBranch, branchVersion;
+      // We already extracted the version from the branch name earlier
+      // No need to do it again! We're all about efficiency, honey! 💅
       
-      if (isPRMerge) {
-        // Regular PR merge - extract from PR title
-        titleVersion = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
-        
-        // Then try to get version from the head branch name (this is more reliable)
-        // The staging branch follows the pattern: {stagingBranch}-v{version}
-        headBranch = context.payload.pull_request.head.ref;
-        core.info(`PR was merged from branch: ${headBranch}`);
-        
-        // Try to extract version from the staging branch name
-        branchVersion = extractVersionFromStagingBranch(headBranch, config.stagingBranch);
-      } else if (detectedPR) {
-        // Stealth PR merge - use info from our detection
-        titleVersion = extractVersionFromPRTitle(detectedPR.title, config.pullRequestTitle);
-        headBranch = detectedPR.headBranch;
-        branchVersion = detectedPR.version;
-        core.info(`Stealth PR was merged from branch: ${headBranch}`);
+      // Just in case we don't have a branch version yet (unlikely), try to extract it from PR title
+      if (!branchVersion && isPRMerge) {
+        core.info('No branch version found, trying to extract from PR title as a last resort...');
+        const titleVersion = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
+        if (titleVersion) {
+          branchVersion = titleVersion;
+          core.info(`Extracted version ${branchVersion} from PR title as a fallback 🤷‍♀️`);
+        }
       }
       
-      // Use branch version if available, otherwise fall back to title version
-      let version = branchVersion || titleVersion;
-      if (branchVersion) {
-        core.info(`Extracted version ${version} from staging branch name ${headBranch} 💁‍♀️`);
-      } else if (titleVersion) {
-        core.info(`Couldn't extract version from branch, using title version instead: ${version}`);
+      // Make sure we have a version to work with
+      let version = branchVersion;
+      
+      if (!version) {
+        // If we still don't have a version and we have a bump command, start from 0.0.0
+        if (bumpCommandResult.hasBumpCommand) {
+          version = '0.0.0';
+          core.info(`No version found in branch or title, but we have a bump command! Starting from ${version} 💅`);
+        } else {
+          throw new Error("Couldn't determine version from branch name or PR title - I'm totally confused! 😵");
+        }
       } else {
-        throw new Error("Couldn't determine version from PR title or branch name - I'm totally confused! 😵");
+        core.info(`Using version ${version} extracted from branch name 💁‍♀️`);
       }
       
       // We've already checked for bump commands earlier, so let's use that result
@@ -60381,12 +60384,18 @@ async function run() {
       
       const previousVersion = version; // For now, track the same version
       
+      // Skip the regular commit analysis flow since we already know what version we want!
+      core.info(`\n💅 Skipping regular commit analysis since we already have our version: ${version}`);
+      core.info('No need to analyze commits between branches when we already know what we want, honey! 💁‍♀️');
+      
+      // Set all the outputs directly
       setOutput('run_type', 'release');
       setOutput('is_pr_run', 'false');
       setOutput('is_release_run', 'true');
       setOutput('release_tag', `v${version}`);
       setOutput('previous_version', previousVersion);
       setOutput('new_version', version);
+      setOutput('bump_type', bumpCommandResult.hasBumpCommand ? bumpCommandResult.bumpType : 'patch'); // Default to patch if no bump command
       
       // Set individual version components
       const [major, minor, patch] = version.split('.');

@@ -19,6 +19,8 @@ async function findBumpCommandsInPR(octokit, context, prNumber) {
     return { hasBumpCommand: false };
   }
   
+  console.log(`👌 BUMP COMMAND CHECK RUNNING FOR PR #${prNumber} - I'm on the hunt for those sassy commands! 💃`);
+  
   console.log(`💋 Checking comments on PR #${prNumber} for bump commands...`);
   
   try {
