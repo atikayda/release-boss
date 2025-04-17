@@ -1,5 +1,4 @@
 const fs = require('fs').promises;
-// path is not used in this file, so we're removing it - keeping things tidy! 💅
 const yaml = require('js-yaml');
 
 /**

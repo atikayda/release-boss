@@ -397,7 +397,7 @@ async function run() {
         core.info(`Processing ${config.versionFiles.length} version files:`);
         config.versionFiles.forEach(file => core.info(`  - ${file}`));
         
-        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion, config);
+        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion);
         core.info(`\nSuccessfully processed ${processedVersionFiles.length} version files:`);
         processedVersionFiles.forEach(file => core.info(`  - ${file}`));
         updatedFiles.push(...processedVersionFiles);
@@ -409,7 +409,7 @@ async function run() {
         core.info(`\nProcessing ${config.templateFiles.length} template files:`);
         config.templateFiles.forEach(file => core.info(`  - ${file}`));
         
-        const generatedTemplateFiles = await processTemplateFiles(config.templateFiles, newVersion, config);
+        const generatedTemplateFiles = await processTemplateFiles(config.templateFiles, newVersion);
         core.info(`\nSuccessfully generated ${generatedTemplateFiles.length} output files:`);
         generatedTemplateFiles.forEach(file => core.info(`  - ${file}`));
         updatedFiles.push(...generatedTemplateFiles);

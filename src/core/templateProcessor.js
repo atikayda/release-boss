@@ -5,10 +5,9 @@ const path = require('path');
  * Process files with inline version templates
  * @param {Array} files - List of files to process
  * @param {String} version - New version to inject
- * @param {Object} config - Release manager configuration
  * @returns {Array} - List of processed files
  */
-async function processVersionFiles(files, version, config) {
+async function processVersionFiles(files, version) {
   const [major, minor, patch] = version.split('.');
   const processedFiles = [];
   
@@ -28,13 +27,10 @@ async function processVersionFiles(files, version, config) {
         continue; // Skip to next file
       }
       
-      // Read the file content
-      console.log(`Reading file content...`);
       const content = await fs.readFile(file, 'utf8');
       console.log(`File read successfully (${content.length} bytes)`); 
       console.log(`Looking for version template markers...`);
       
-      // Debug the file content
       console.log(`File content preview (first 200 chars):\n${content.substring(0, 200)}...`);
       
       const lines = content.split('\n');
@@ -165,11 +161,8 @@ async function processVersionFiles(files, version, config) {
         const absPath = path.resolve(file);
         console.log(`Absolute path for tracking: ${absPath}`);
         
-        // Add to the list of processed files (use absolute path)
         processedFiles.push(absPath);
         console.log(`Added to processed files list: ${absPath}`);
-        
-        // Show the current state of the processed files list
         console.log(`Current processed files list: ${processedFiles.join(', ')}`);
       } catch (saveError) {
         console.error(`CRITICAL ERROR saving file ${file}: ${saveError.message}`);
@@ -191,10 +184,9 @@ async function processVersionFiles(files, version, config) {
  * Process template files
  * @param {Array} files - List of template files to process
  * @param {String} version - New version to inject
- * @param {Object} config - Release manager configuration
  * @returns {Array} - List of generated output files
  */
-async function processTemplateFiles(files, version, config) {
+async function processTemplateFiles(files, version) {
   const [major, minor, patch] = version.split('.');
   const generatedFiles = [];
   

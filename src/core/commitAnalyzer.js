@@ -2,11 +2,6 @@ const semver = require('semver');
 const conventionalCommitsParser = require('conventional-commits-parser');
 
 /**
- * Commit types that trigger a major version bump (breaking changes)
- */
-const MAJOR_BUMP_TYPES = [];
-
-/**
  * Commit types that trigger a minor version bump (new features)
  */
 const MINOR_BUMP_TYPES = ['feat'];
