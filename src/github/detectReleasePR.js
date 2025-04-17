@@ -19,6 +19,8 @@
 async function detectReleasePR(octokit, context, config) {
   const { owner, repo } = context.repo;
   
+  console.log(`👌 STEALTH PR DETECTION ACTIVATED - Looking for sneaky PR merges disguised as pushes! 👩‍🕵️‍♀️`);
+  
   // Only check push events
   if (context.eventName !== 'push') {
     console.log('Not a push event, skipping stealth PR detection 💅');
