@@ -1,0 +1,16 @@
+{
+  "name": "example-package",
+  "version": "1.2.3",
+  "description": "Example package using templates",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "versionInfo": {
+    "major": "1",
+    "minor": "2",
+    "patch": "3"
+  },
+  "author": "",
+  "license": "MIT"
+}

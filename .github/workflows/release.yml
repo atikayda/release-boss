@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - release
+    types: [closed]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build distribution
+        run: npm run build
+        
+      - name: Commit dist files if changed
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add dist/
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: update dist files"
+          git push
+      
+      - name: Run Release Manager
+        uses: ./
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-manager.json

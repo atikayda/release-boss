@@ -1,0 +1,59 @@
+name: 'Release Manager'
+description: 'Automatically create release PRs based on conventional commits with a simple template-based version update mechanism'
+author: 'Kaity'
+
+inputs:
+  token:
+    description: 'GitHub token with permissions to create branches and PRs'
+    required: true
+    default: ${{ github.token }}
+  config-file:
+    description: 'Path to release-manager config file'
+    required: false
+    default: '.release-manager.json'
+
+outputs:
+  run_type:
+    description: 'Type of run that occurred ("pr" or "release")'
+  is_pr_run:
+    description: 'Boolean indicating if this was a PR creation run (true/false)'
+  is_release_run:
+    description: 'Boolean indicating if this was a release tagging run (true/false)'
+  pr_number:
+    description: 'PR number if a PR was created or updated'
+  pr_url:
+    description: 'URL of the PR if a PR was created or updated'
+  pr_status:
+    description: 'Status of the PR (open, closed) if a PR was created or updated'
+  release_tag:
+    description: 'Release tag if a release was tagged'
+  additional_tags:
+    description: 'Comma-separated list of additional tags created (latest, major, major.minor)'
+  release_commit_sha:
+    description: 'Commit SHA that was tagged for the release'
+  previous_version:
+    description: 'Previous version before the update'
+  new_version:
+    description: 'New version after the update'
+  previous_major:
+    description: 'Major version number from previous version'
+  previous_minor:
+    description: 'Minor version number from previous version'
+  previous_patch:
+    description: 'Patch version number from previous version'
+  new_major:
+    description: 'Major version number from new version'
+  new_minor:
+    description: 'Minor version number from new version'
+  new_patch:
+    description: 'Patch version number from new version'
+  bump_type:
+    description: 'Type of bump performed ("major", "minor", "patch", or "none")'
+
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
+
+branding:
+  icon: 'git-pull-request'
+  color: 'blue'
