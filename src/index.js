@@ -3,7 +3,7 @@ const github = require('@actions/github');
 const fs = require('fs');
 const path = require('path');
 const semver = require('semver');
-const { readConfig, validateConfig } = require('./utils/config');
+const { getConfig, validateConfig } = require('./utils/config');
 const { checkForBumpCommands } = require('./github/commentAnalyzer');
 const { detectReleasePR } = require('./github/detectReleasePR');
 const { findBumpCommandsInPR, applyBumpCommand } = require('./github/findBumpCommands');
@@ -49,7 +49,7 @@ async function run() {
     const context = github.context;
     
     // Load and validate config
-    const config = await readConfig(configFilePath);
+    const config = await getConfig(configFilePath);
     validateConfig(config);
     
     core.info('Configuration loaded and validated');
