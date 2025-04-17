@@ -4,6 +4,21 @@
 
 ## [0.0.1](https://github.com/atikayda/release-manager/compare/v0.0.0...v0.0.1) (2025-04-17)
 
+### ✨ Fabulous New Features ✨
+
+* add support for detecting stealth PR merges and bump commands ([057d025](https://github.com/atikayda/release-manager/commit/057d025428a8f2dc5c06ad4ff2b79595611ca912))
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* update function call to use readConfig instead of getConfig ([f71b2d7](https://github.com/atikayda/release-manager/commit/f71b2d7434a60180806a147b4140855c4d697fda))
+* update import and function call to use getConfig instead of readConfig ([3183049](https://github.com/atikayda/release-manager/commit/318304954f0680e13a6568f2940a7bd0907cf703))
+
+
+
+## 0.0.1 (2025-04-17)
+
+## [0.0.1](https://github.com/atikayda/release-manager/compare/v0.0.0...v0.0.1) (2025-04-17)
+
 ### 🛠️ Bug Fixes & Polish 💅
 
 * move title matching variables to outer scope ([f3bfdbd](https://github.com/atikayda/release-manager/commit/f3bfdbd6bf1482a76d17bf98b11dcda8d9fff899))
