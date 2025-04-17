@@ -42,5 +42,5 @@ jobs:
       - name: Run Release Manager
         uses: ./
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
           config-file: .release-manager.json
