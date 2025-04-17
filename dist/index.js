@@ -60220,7 +60220,7 @@ async function run() {
     const context = github.context;
     
     // Load and validate config
-    const config = await getConfig(configFilePath);
+    const config = await readConfig(configFilePath);
     validateConfig(config);
     
     core.info('Configuration loaded and validated');
