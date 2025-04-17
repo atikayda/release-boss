@@ -59,12 +59,61 @@ jobs:
 
 ## ⚙️ Configuration
 
-Create a cute little `.release-manager.json` file in your repository root with your desired options:
+Release Manager now supports both YAML and JSON configuration! 💁‍♀️
+
+### YAML Configuration (Recommended for GitHub Users)
+
+Create a `.release-manager.yml` file in your repository root. YAML is more GitHub-friendly and allows comments!
+
+```yaml
+# ✨ Release Manager Configuration ✨
+
+# Branch Configuration
+mergeBranch: main          # Branch to analyze commits from
+stagingBranch: staging     # Branch prefix for staging changes
+releaseBranch: release     # Branch to create PR against
+
+# PR Configuration
+pullRequestTitle: "chore: release ✨ {version} ✨"  # PR title template
+pullRequestHeader: "# 🎉 Release Time! 💃"         # Header for PR description
+
+# Files to update
+templateFiles:             # Files containing whole-file templates
+  - path: package.tpl.json  # Template file path
+    output: package.json    # Output file path
+
+versionFiles:              # Files containing inline version templates
+  - src/version.js         # Files with %%release-manager: ... %% markers
+
+# Changelog Configuration
+changelogSections:         # Commit types to include in changelog
+  - type: feat
+    section: "✨ Fabulous New Features ✨"
+    hidden: false
+  - type: fix
+    section: "🛠️ Bug Fixes & Polish 💅"
+    hidden: false
+  - type: perf
+    section: "⚡ Performance Slayage 🔥"
+    hidden: false
+
+changelogPath: CHANGELOG.md  # Path to changelog file
+
+# Tagging Configuration
+versionTagPrefix: true     # Whether to prefix tags with 'v' (v1.0.0)
+tagLatest: true            # Also tag as 'latest'
+tagMajor: true             # Also tag with major version (v1)
+tagMinor: true             # Also tag with major.minor (v1.2)
+```
+
+### JSON Configuration (Traditional)
+
+If you prefer JSON, create a `.release-manager.json` file instead:
 
 ```json
 {
   "mergeBranch": "main",                   // Branch to analyze commits from
-  "stagingBranch": "staging",               // Branch prefix for staging changes (will append version)
+  "stagingBranch": "staging",               // Branch prefix for staging changes
   "releaseBranch": "release",               // Branch to create PR against
   "pullRequestTitle": "chore: release ✨ {version} ✨", // PR title template
   "pullRequestHeader": "# 🎉 Release Time! 💃",     // Header text for PR description

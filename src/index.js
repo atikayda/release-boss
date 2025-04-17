@@ -1,10 +1,7 @@
 const core = require('@actions/core');
 const github = require('@actions/github');
-const fs = require('fs');
-const path = require('path');
 const semver = require('semver');
 const { getConfig, validateConfig } = require('./utils/config');
-const { checkForBumpCommands } = require('./github/commentAnalyzer');
 const { detectReleasePR } = require('./github/detectReleasePR');
 const { findBumpCommandsInPR, applyBumpCommand } = require('./github/findBumpCommands');
 
@@ -36,6 +33,20 @@ function endGroup() {
 function setOutput(name, value) {
   core.setOutput(name, value);
   core.info(`Setting output ${name}: ${value}`);
+}
+
+/**
+ * Helper function to extract version from staging branch name
+ * @param {String} branchName - The branch name to extract version from
+ * @param {String} stagingPrefix - The prefix for staging branches
+ * @returns {String|null} - Extracted version or null if not found
+ */
+function extractVersionFromStagingBranch(branchName, stagingPrefix) {
+  // Using a template literal for dynamic regex pattern
+  const pattern = `^${stagingPrefix}-v?([0-9]+.[0-9]+.[0-9]+.*?)$`;
+  const regex = new RegExp(pattern);
+  const match = branchName.match(regex);
+  return match ? match[1] : null;
 }
 
 async function run() {
@@ -120,12 +131,6 @@ async function run() {
     }
     endGroup();
     
-    // Helper function to extract version from staging branch name
-    function extractVersionFromStagingBranch(branchName, stagingPrefix) {
-      const regex = new RegExp(`^${stagingPrefix}-v?([0-9]+\.[0-9]+\.[0-9]+.*)$`);
-      const match = branchName.match(regex);
-      return match ? match[1] : null;
-    }
     
     // Check for bump commands in PR comments
     let bumpCommandResult = { hasBumpCommand: false };
@@ -533,7 +538,7 @@ function extractVersionFromPRTitle(title, template) {
   const escapedTemplate = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   
   // Replace the escaped {version} with a semver capture group
-  const pattern = escapedTemplate.replace(/\{version\}/g, '([0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?)');
+  const pattern = escapedTemplate.replace(/\{version\}/g, '([0-9]+\\.[0-9]+\\.[0-9]+(?:-[\\w.-]+)?)');
   const regex = new RegExp(pattern);
   
   // Try to match and extract the version
