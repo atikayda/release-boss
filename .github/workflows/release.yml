@@ -10,6 +10,12 @@ on:
       - release
     types: [closed]
 
+# We need these glam permissions to push our fabulous changes! 💅
+permissions:
+  contents: write # For pushing to the repo
+  pull-requests: write # For creating/updating PRs
+  issues: write # For commenting on issues
+
 jobs:
   release:
     runs-on: ubuntu-latest
