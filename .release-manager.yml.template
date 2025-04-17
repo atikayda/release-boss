@@ -1,0 +1,75 @@
+# ✨ Release Manager Configuration ✨
+# This fabulous YAML config file controls how the Release Manager behaves!
+# Feel free to customize it to match your project's needs 💅
+
+# Branch Configuration
+# -------------------
+# Which branches to use for different stages of the release process
+mergeBranch: main        # Branch where changes are merged (usually 'main' or 'master')
+stagingBranch: staging   # Prefix for staging branches (e.g., 'staging-v1.0.0')
+releaseBranch: release   # Branch where releases are created
+
+# PR Configuration
+# ---------------
+# How your release PRs should look
+pullRequestTitle: "chore: release {version}"  # Title format for release PRs
+pullRequestHeader: "Release PR"               # Header text for PR description
+
+# Version Files
+# ------------
+# Files that should be updated with the new version number
+# Each entry can be a simple path or an object with path and type
+versionFiles:
+  - src/version.js
+  # For more complex version files, you can specify the type:
+  # - path: src/version.go
+  #   type: go
+
+# Template Files
+# -------------
+# Files that should be processed with version variables
+# Each entry should have path, template and output fields
+templateFiles: []
+  # Example:
+  # - path: src/version.tpl.js
+  #   template: src/version.js
+  #   output: src/version.js
+
+# Changelog Configuration
+# ---------------------
+# How to generate and format the changelog
+changelogPath: CHANGELOG.md  # Where to write the changelog
+
+# Customize how different commit types appear in the changelog
+changelogSections:
+  - type: feat     # Commit type (from conventional commits)
+    section: "✨ Fabulous New Features ✨"  # Section heading in changelog
+    hidden: false  # Whether to hide this section
+  
+  - type: fix
+    section: "🛠️ Bug Fixes & Polish 💅"
+    hidden: false
+    
+  - type: perf
+    section: "⚡ Performance Improvements"
+    hidden: false
+
+# Tagging Configuration
+# -------------------
+# How version tags should be created
+versionTagPrefix: true  # Whether to prefix tags with 'v' (e.g., v1.0.0)
+tagLatest: true         # Whether to update the 'latest' tag
+tagMajor: false         # Whether to tag major versions (e.g., v1)
+tagMinor: false         # Whether to tag minor versions (e.g., v1.0)
+
+# Advanced Features
+# ---------------
+# Uncomment these if you want to use them!
+
+# commitAnalyzerRules:  # Custom rules for commit analysis
+#   - type: docs
+#     bump: patch
+#   - type: style
+#     bump: patch
+#   - type: refactor
+#     bump: patch

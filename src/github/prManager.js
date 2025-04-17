@@ -85,12 +85,7 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       // Create a merge commit between the release branch and the main branch
       console.log(`Creating merge commit between ${config.releaseBranch} and ${config.mergeBranch}...`);
       
-      // Get base tree from release branch
-      const { data: baseCommit } = await octokit.rest.git.getCommit({
-        owner,
-        repo,
-        commit_sha: releaseBranchSha
-      });
+      // Create a merge commit with release branch as base and main branch as head
       
       // Create a merge commit with release branch as base and main branch as head
       const { data: mergeCommit } = await octokit.rest.repos.merge({
@@ -615,7 +610,6 @@ async function tagRelease(octokit, context, version, config) {
       commitSha = releaseRef.object.sha;
       console.log(`Creating tag ${tagName} at commit ${commitSha.substring(0, 7)}...`);
       
-      // Create primary version tag
       await octokit.rest.git.createRef({
         owner,
         repo,
@@ -636,11 +630,13 @@ async function tagRelease(octokit, context, version, config) {
       try {
         // Check if tag already exists
         try {
-          const { data: existingTag } = await octokit.rest.git.getRef({
+          await octokit.rest.git.getRef({
             owner,
             repo,
             ref: `tags/${tag}`
           });
+          
+          console.log(`Tag ${tag} already exists, updating it to point to the new commit 💅`);
           
           // Update existing tag to point to the new commit
           await octokit.rest.git.updateRef({

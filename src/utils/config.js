@@ -1,5 +1,5 @@
 const fs = require('fs').promises;
-const path = require('path');
+const yaml = require('js-yaml');
 
 /**
  * Default configuration values
@@ -27,12 +27,29 @@ const DEFAULT_CONFIG = {
  */
 async function getConfig(configFilePath) {
   try {
-    // Resolve path
-    const resolvedPath = configFilePath || '.release-manager.json';
+    // If no config file specified, try to find one in order of preference
+    if (!configFilePath) {
+      // Check for YAML first (it's more GitHub-friendly!)
+      if (await fileExists('.release-manager.yml') || await fileExists('.release-manager.yaml')) {
+        configFilePath = await fileExists('.release-manager.yml') ? '.release-manager.yml' : '.release-manager.yaml';
+      } else {
+        // Fall back to JSON if no YAML found
+        configFilePath = '.release-manager.json';
+      }
+    }
     
-    // Read and parse JSON
-    const configData = await fs.readFile(resolvedPath, 'utf8');
-    const parsedConfig = JSON.parse(configData);
+    // Read config file
+    const configData = await fs.readFile(configFilePath, 'utf8');
+    let parsedConfig;
+    
+    // Parse based on file extension
+    if (configFilePath.endsWith('.yml') || configFilePath.endsWith('.yaml')) {
+      console.log(`Reading YAML config from ${configFilePath} - so trendy and GitHub-friendly! 💅`);
+      parsedConfig = yaml.load(configData);
+    } else {
+      console.log(`Reading JSON config from ${configFilePath}`);
+      parsedConfig = JSON.parse(configData);
+    }
     
     // Merge with defaults
     return {
@@ -46,6 +63,20 @@ async function getConfig(configFilePath) {
     }
     
     throw new Error(`Failed to load config: ${error.message}`);
+  }
+}
+
+/**
+ * Helper function to check if a file exists
+ * @param {String} filePath - Path to check
+ * @returns {Promise<Boolean|String>} - Returns the path if file exists, false otherwise
+ */
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return filePath;
+  } catch {
+    return false;
   }
 }
 
