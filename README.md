@@ -54,12 +54,12 @@ jobs:
         # uses: atikayda/release-manager@latest  # Live dangerously with latest
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: .release-manager.json
+          config-file: .release-manager.yml
 ```
 
 ## ⚙️ Configuration
 
-Release Manager now supports both YAML and JSON configuration! 💁‍♀️
+Release Manager supports both YAML and JSON configuration! 💁‍♀️
 
 ### YAML Configuration (Recommended for GitHub Users)
 
@@ -219,7 +219,7 @@ For those projects still finding their way:
    my-config.tpl.json → processed to → my-config.json
    ```
 
-3. Configure which files to process in `.release-manager.json`
+3. Configure which files to process in `.release-manager.yml`
 4. Push changes and let Release Manager handle the rest!
 
 ## 💡 Tips & Tricks
