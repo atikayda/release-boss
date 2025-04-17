@@ -1,0 +1,56 @@
+# ✨ Release Manager Configuration ✨
+# This fabulous YAML config file controls how the Release Manager behaves!
+# Feel free to customize it to match your project's needs 💅
+
+# Branch Configuration
+# -------------------
+mergeBranch: main        # Branch where changes are merged
+stagingBranch: staging   # Prefix for staging branches
+releaseBranch: release   # Branch where releases are created
+
+# PR Configuration
+# ---------------
+pullRequestTitle: "chore: release ✨ {version} ✨"  # Title format for release PRs
+pullRequestHeader: "# 🎉 Release Time! 💃"         # Header text for PR description
+
+# Version Files
+# ------------
+versionFiles: []  # Files that should be updated with the new version number
+
+# Template Files
+# -------------
+templateFiles:     # Files that should be processed with version variables
+  - src/version.tpl.js
+
+# Changelog Configuration
+# ---------------------
+changelogPath: CHANGELOG.md  # Where to write the changelog
+
+# Customize how different commit types appear in the changelog
+changelogSections:
+  - type: feat
+    section: "✨ Fabulous New Features ✨"
+    hidden: false
+  
+  - type: fix
+    section: "🛠️ Bug Fixes & Polish 💅"
+    hidden: false
+    
+  - type: perf
+    section: "⚡ Performance Slayage 🔥"
+    hidden: false
+    
+  - type: refactor
+    section: "💃 Code Makeovers 💋"
+    hidden: false
+    
+  - type: docs
+    section: "📝 Documentation Glow-Ups 📚"
+    hidden: false
+
+# Tagging Configuration
+# -------------------
+versionTagPrefix: true  # Whether to prefix tags with 'v' (e.g., v1.0.0)
+tagLatest: true         # Whether to update the 'latest' tag
+tagMajor: true          # Whether to tag major versions (e.g., v1)
+tagMinor: true          # Whether to tag minor versions (e.g., v1.0)
