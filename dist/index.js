@@ -57038,6 +57038,112 @@ module.exports = {
 
 /***/ }),
 
+/***/ 3200:
+/***/ ((module) => {
+
+/**
+ * This cute little module checks PR comments for bump commands
+ * Because sometimes we need to tell our release manager to be more EXTRA! 💁‍♀️
+ */
+
+/**
+ * Checks PR comments for bump commands like "/bump minor" or "/bump major"
+ * @param {Object} octokit - GitHub API client
+ * @param {Object} context - GitHub context with PR info
+ * @returns {Promise<Object>} Object with bumpType (if found) and other details
+ */
+async function checkForBumpCommands(octokit, context) {
+  const { owner, repo } = context.repo;
+  const prNumber = context.payload.pull_request?.number;
+  
+  if (!prNumber) {
+    console.log('No PR number found in context, skipping bump command check 💅');
+    return { hasBumpCommand: false };
+  }
+  
+  console.log(`Checking comments on PR #${prNumber} for bump commands... 👀`);
+  
+  try {
+    // Get all comments on the PR
+    const { data: comments } = await octokit.rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: prNumber,
+    });
+    
+    console.log(`Found ${comments.length} comments on PR #${prNumber}`);
+    
+    // Look for bump commands
+    for (const comment of comments) {
+      const commentBody = comment.body || '';
+      
+      // Check for bump commands using regex to match "/bump major" or "/bump minor"
+      const bumpCommandMatch = commentBody.match(/\/bump\s+(major|minor)/i);
+      
+      if (bumpCommandMatch) {
+        const bumpType = bumpCommandMatch[1].toLowerCase();
+        console.log(`💃 Found bump command in comment by ${comment.user.login}: /bump ${bumpType}`);
+        
+        return {
+          hasBumpCommand: true,
+          bumpType: bumpType,
+          commenter: comment.user.login,
+          commentUrl: comment.html_url,
+          commentId: comment.id
+        };
+      }
+    }
+    
+    console.log('No bump commands found in PR comments 🤷‍♀️');
+    return { hasBumpCommand: false };
+  } catch (error) {
+    console.error(`Error checking PR comments for bump commands: ${error.message}`);
+    return { hasBumpCommand: false, error: error.message };
+  }
+}
+
+/**
+ * Applies a version bump based on command and current version
+ * @param {String} currentVersion - The current version (e.g., "1.0.22")
+ * @param {String} bumpType - Type of bump ("major" or "minor")
+ * @returns {String} The new version after applying the bump
+ */
+function applyBumpCommand(currentVersion, bumpType) {
+  // Parse version components
+  const [major, minor, patch] = currentVersion.split('.').map(Number);
+  
+  // If it's already at the requested bump level, don't change anything
+  if (bumpType === 'minor' && patch === 0) {
+    console.log(`Version ${currentVersion} is already at a minor version bump (patch is 0), no change needed 💅`);
+    return currentVersion;
+  }
+  
+  if (bumpType === 'major' && minor === 0 && patch === 0) {
+    console.log(`Version ${currentVersion} is already at a major version bump (minor and patch are 0), no change needed 💅`);
+    return currentVersion;
+  }
+  
+  // Apply the requested bump
+  if (bumpType === 'minor') {
+    // Bump to next minor version with patch reset to 0
+    return `${major}.${minor + 1}.0`;
+  } else if (bumpType === 'major') {
+    // Bump to next major version with minor and patch reset to 0
+    return `${major + 1}.0.0`;
+  }
+  
+  // Fallback - shouldn't reach here
+  return currentVersion;
+}
+
+module.exports = {
+  checkForBumpCommands,
+  applyBumpCommand
+};
+
+
+/***/ }),
+
 /***/ 3940:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -59830,6 +59936,7 @@ const { analyzeCommits, determineVersionBump } = __nccwpck_require__(6042);
 const { generateChangelog } = __nccwpck_require__(913);
 const { processVersionFiles, processTemplateFiles } = __nccwpck_require__(2577);
 const { createOrUpdatePR, tagRelease } = __nccwpck_require__(3940);
+const { checkForBumpCommands, applyBumpCommand } = __nccwpck_require__(3200);
 const { getConfig, validateConfig } = __nccwpck_require__(1477);
 
 /**
@@ -59874,27 +59981,88 @@ async function run() {
     core.info('Configuration loaded and validated');
     
     // Check if this is a PR merge or a regular push
-    startGroup('Run Type Detection');
+    startGroup('✨ Run Type Detection - What are we serving today? ✨');
     const isPRMerge = context.payload.pull_request && context.payload.action === 'closed' && context.payload.pull_request.merged;
     
     if (isPRMerge) {
       core.info(`Detected PR merge event: PR #${context.payload.pull_request.number}`);
       core.info(`PR Title: ${context.payload.pull_request.title}`);
       core.info(`PR was merged: ${context.payload.pull_request.merged}`);
-      core.info(`Expected PR title prefix: ${config.pullRequestTitle.replace('{version}', '')}`);
+      core.info(`Expected PR title format: ${config.pullRequestTitle.replace('{version}', 'X.Y.Z')}`);
       
-      const isTitleMatch = context.payload.pull_request.title.startsWith(config.pullRequestTitle.replace('{version}', ''));
+      // Convert our PR title template into a regex pattern by replacing {version} with a semver match
+      // First escape all regex special chars in the template
+      const escapedTemplate = config.pullRequestTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // Then replace the escaped {version} with a semver capture group
+      const titlePattern = escapedTemplate.replace(/\{version\}/g, '([0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?)');
+      
+      // Create regex and test against PR title
+      const titleRegex = new RegExp(titlePattern);
+      const titleMatch = context.payload.pull_request.title.match(titleRegex);
+      const isTitleMatch = !!titleMatch;
+      
+      if (isTitleMatch && titleMatch[1]) {
+        core.info(`PR title matches our fabulous format! Extracted version: ${titleMatch[1]} 💅`);
+      } else {
+        core.info(`PR title doesn't match our template pattern 😱`);
+      }
       core.info(`PR title matches expected format: ${isTitleMatch}`);
     } else {
       core.info('Regular push event detected, not a PR merge');
     }
     endGroup();
     
-    if (isPRMerge && context.payload.pull_request.title.startsWith(config.pullRequestTitle.replace('{version}', ''))) {
-      // This is a merged release PR - create a tag
-      core.info('Detected merge of release PR');
-      const version = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
-      const previousVersion = version; // In this case, it's the same version
+    // Helper function to extract version from staging branch name
+    function extractVersionFromStagingBranch(branchName, stagingPrefix) {
+      const regex = new RegExp(`^${stagingPrefix}-v?([0-9]+\.[0-9]+\.[0-9]+.*)$`);
+      const match = branchName.match(regex);
+      return match ? match[1] : null;
+    }
+    
+    if (isPRMerge && isTitleMatch) {
+      // This is a merged release PR - create a tag! 💅
+      core.info('Detected merge of release PR - time to make it official! 💍');
+      
+      // First extract version from PR title as a fallback
+      const titleVersion = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
+      
+      // Then try to get version from the head branch name (this is more reliable)
+      // The staging branch follows the pattern: {stagingBranch}-v{version}
+      const headBranch = context.payload.pull_request.head.ref;
+      core.info(`PR was merged from branch: ${headBranch}`);
+      
+      // Try to extract version from the staging branch name
+      const branchVersion = extractVersionFromStagingBranch(headBranch, config.stagingBranch);
+      
+      // Use branch version if available, otherwise fall back to title version
+      let version = branchVersion || titleVersion;
+      if (branchVersion) {
+        core.info(`Extracted version ${version} from staging branch name ${headBranch} 💁‍♀️`);
+      } else if (titleVersion) {
+        core.info(`Couldn't extract version from branch, using title version instead: ${version}`);
+      } else {
+        throw new Error("Couldn't determine version from PR title or branch name - I'm totally confused! 😵");
+      }
+      
+      // Check for special bump commands in PR comments
+      const bumpCommandResult = await checkForBumpCommands(octokit, context);
+      
+      if (bumpCommandResult.hasBumpCommand) {
+        core.info(`💋 Found a bump command in the PR comments: /bump ${bumpCommandResult.bumpType}`);
+        
+        // Apply the bump command to get our new fabulous version
+        const originalVersion = version;
+        version = applyBumpCommand(version, bumpCommandResult.bumpType);
+        
+        if (version !== originalVersion) {
+          core.info(`💅 Applied ${bumpCommandResult.bumpType} bump to version: ${originalVersion} → ${version}`);
+        } else {
+          core.info(`Version already at appropriate ${bumpCommandResult.bumpType} level (${version}), no change needed`);
+        }
+      }
+      
+      const previousVersion = version; // For now, track the same version
       
       setOutput('run_type', 'release');
       setOutput('is_pr_run', 'false');
@@ -59912,7 +60080,7 @@ async function run() {
       setOutput('new_minor', minor);
       setOutput('new_patch', patch);
       
-      startGroup('Release Tagging');
+      startGroup('🎉 Release Tagging - Crown that queen! 👑');
       try {
         // Get prefix based on configuration (default to 'v' if not specified)
         const useVPrefix = config.versionTagPrefix !== false;
@@ -59954,11 +60122,11 @@ async function run() {
     }
     
     // Analyze commits and determine version bump
-    startGroup('Commit Analysis');
+    startGroup('🔍 Commit Analysis - Reading the room, hunty! 🙌');
     let commits;
     try {
       commits = await analyzeCommits(octokit, context, config);
-      core.info(`Found ${commits.length} commits to analyze`);
+      core.info(`Found ${commits.length} commits to analyze - let's see what you've been working on, babe! 👁‍🗨️`);
       
       // Detailed commit information
       if (commits.length > 0) {
@@ -59982,17 +60150,17 @@ async function run() {
     }
     endGroup();
     
-    startGroup('Version Bump Determination');
+    startGroup('💎 Version Bump Determination - Time to level up! 💪');
     let bumpType, newVersion, currentVersion;
     try {
       const result = await determineVersionBump(commits, octokit, context, config);
       ({ bumpType, newVersion, currentVersion } = result);
       
-      core.info(`Current version: ${currentVersion}`);
-      core.info(`Bump type: ${bumpType || 'none'}`);
+      core.info(`Current version: ${currentVersion} - that's so last season! 👠`); 
+      core.info(`Bump type: ${bumpType || 'none'} ${bumpType ? bumpType === 'major' ? '- MAJOR glow-up incoming! 🙌👑' : bumpType === 'minor' ? '- Fresh new lewk! 💄' : '- Just a touch-up, darling 💅' : '- Keeping it subtle today, honey 🙄'}`);
       
       if (bumpType) {
-        core.info(`New version: ${newVersion}`);
+        core.info(`New version: ${newVersion} - looking FABULOUS, darling! ✨💃`);
         core.info(`Version components: Major=${result.major}, Minor=${result.minor}, Patch=${result.patch}`);
         
         if (currentVersion && semver.lt(currentVersion, '1.0.0')) {
@@ -60049,7 +60217,7 @@ async function run() {
     setOutput('new_patch', newPatch);
     
     // Generate changelog
-    startGroup('Changelog Generation');
+    startGroup('📝 Changelog Generation - Spilling the tea! 🍵✨');
     let changelog;
     try {
       changelog = await generateChangelog(commits, newVersion, currentVersion, octokit, context, config);
@@ -60067,7 +60235,7 @@ async function run() {
     // Process version and template files
     const updatedFiles = [];
     
-    startGroup('Template Processing');
+    startGroup('✨ Template Processing - Makeover time! 💅');
     try {
       if (config.versionFiles && config.versionFiles.length > 0) {
         core.info(`Processing ${config.versionFiles.length} version files:`);
@@ -60101,10 +60269,10 @@ async function run() {
     core.info(`Processed ${updatedFiles.length} files with new version information`);
     
     // Create or update PR
-    startGroup('Pull Request Management');
+    startGroup('💋 Pull Request Management - Serving lewks! 💃');
     let prNumber, prUrl, prStatus;
     try {
-      core.info(`Creating or updating PR for version ${newVersion}`);
+      core.info(`Creating or updating PR for version ${newVersion} - time to strut our stuff! 👌👑`);
       
       if (updatedFiles.length > 0) {
         core.info('\nFiles to be committed to PR:');
@@ -60203,9 +60371,41 @@ async function run() {
     core.setFailed(`Action failed: ${error.message}`);
   }
 }
+/**
+ * Extracts version from PR title - now with extra fabulous support for emojis and fancy formatting! 💅
+ * @param {String} title - PR title 
+ * @param {String} template - PR title template with {version} placeholder
+ * @returns {String} Extracted version number or null if not found
+ */
 function extractVersionFromPRTitle(title, template) {
-  const prefix = template.replace('{version}', '');
-  return title.substring(prefix.length).trim();
+  // First escape regex special characters in the template
+  const escapedTemplate = template.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  
+  // Replace the escaped {version} with a semver capture group
+  const pattern = escapedTemplate.replace(/\{version\}/g, '([0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?)');
+  const regex = new RegExp(pattern);
+  
+  // Try to match and extract the version
+  const match = title.match(regex);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  
+  // Super simple fallback - just in case all else fails
+  try {
+    console.log(`Trying fallback method for version extraction - regex didn't match! 😱`);
+    const prefix = template.replace('{version}', '');
+    const extracted = title.substring(title.indexOf(prefix) + prefix.length).trim();
+    
+    // Quick sanity check to make sure it looks like a version
+    if (/^[0-9]+\.[0-9]+\.[0-9]+/.test(extracted)) {
+      return extracted;
+    } 
+    return null;
+  } catch (e) {
+    console.log(`Oopsie! Couldn't extract version from PR title using any of our methods! 😱`);
+    return null;
+  }
 }
 
 run();
