@@ -3,13 +3,15 @@ const github = require('@actions/github');
 const fs = require('fs');
 const path = require('path');
 const semver = require('semver');
+const { readConfig, validateConfig } = require('./utils/config');
+const { checkForBumpCommands } = require('./github/commentAnalyzer');
+const { detectReleasePR } = require('./github/detectReleasePR');
+const { findBumpCommandsInPR, applyBumpCommand } = require('./github/findBumpCommands');
 
 const { analyzeCommits, determineVersionBump } = require('./core/commitAnalyzer');
 const { generateChangelog } = require('./core/changelogGenerator');
 const { processVersionFiles, processTemplateFiles } = require('./core/templateProcessor');
 const { createOrUpdatePR, tagRelease } = require('./github/prManager');
-const { checkForBumpCommands, applyBumpCommand } = require('./github/commentAnalyzer');
-const { getConfig, validateConfig } = require('./utils/config');
 
 /**
  * Create a collapsible group in GitHub Actions log output
@@ -59,6 +61,7 @@ async function run() {
     // Initialize these outside the if block so they're available in the wider scope
     let isTitleMatch = false;
     let titleMatch = null;
+    let detectedPR = null;
     
     if (isPRMerge) {
       core.info(`Detected PR merge event: PR #${context.payload.pull_request.number}`);
@@ -86,6 +89,33 @@ async function run() {
       core.info(`PR title matches expected format: ${isTitleMatch}`);
     } else {
       core.info('Regular push event detected, not a PR merge');
+      
+      // Check if this might be a "stealth" PR merge (push to release branch from a staging branch)
+      startGroup('👀 Detective work - Checking for stealth PR merges 👀');
+      core.info('This looks like a regular push, but let me see if it\'s actually a stealth PR merge...');
+      
+      // Create octokit instance for GitHub API calls
+      const token = core.getInput('token');
+      const octokit = github.getOctokit(token);
+      
+      // Try to detect if this push is actually a merged PR
+      detectedPR = await detectReleasePR(octokit, context, config);
+      
+      if (detectedPR) {
+        core.info(`OMG! I found a stealth PR merge! PR #${detectedPR.number} from ${detectedPR.headBranch} 💅`);
+        core.info(`PR Title: ${detectedPR.title}`);
+        
+        // Since we found a stealth PR merge, let's extract version and check title match
+        if (detectedPR.version) {
+          titleMatch = [null, detectedPR.version]; // Mock the regex match array format
+          isTitleMatch = true;
+          core.info(`Extracted version ${detectedPR.version} from branch name ${detectedPR.headBranch} 💃`);
+        }
+      } else {
+        core.info('No stealth PR merge detected, just a regular push 🤷‍♀️');
+      }
+      
+      endGroup();
     }
     endGroup();
     
@@ -96,20 +126,61 @@ async function run() {
       return match ? match[1] : null;
     }
     
-    if (isPRMerge && isTitleMatch) {
+    // Check for bump commands in PR comments
+    let bumpCommandResult = { hasBumpCommand: false };
+    // Use releasePrNumber as our variable name to avoid conflicts - we're so fashion-forward! 💅
+    let releasePrNumber = null;
+    
+    if (isPRMerge) {
+      // For a standard PR merge, get the PR number from the payload
+      releasePrNumber = context.payload.pull_request.number;
+    } else if (detectedPR) {
+      // For a "stealth" PR merge detected from a push event
+      releasePrNumber = detectedPR.number;
+    }
+    
+    if (releasePrNumber) {
+      startGroup('💋 Checking for bump commands in PR comments 💋');
+      // Create octokit instance if we haven't already
+      const authToken = core.getInput('token');
+      const octokit = github.getOctokit(authToken);
+      
+      core.info(`Searching for bump commands in PR #${releasePrNumber} comments...`);
+      bumpCommandResult = await findBumpCommandsInPR(octokit, context, releasePrNumber);
+      
+      if (bumpCommandResult.hasBumpCommand) {
+        core.info(`💃 Found a /bump ${bumpCommandResult.bumpType} command from ${bumpCommandResult.commenter}! Time to level up! 💅`);
+      } else {
+        core.info('No bump commands found in the PR comments 🤷‍♀️');
+      }
+      endGroup();
+    }
+    
+    if ((isPRMerge || detectedPR) && isTitleMatch) {
       // This is a merged release PR - create a tag! 💅
       core.info('Detected merge of release PR - time to make it official! 💍');
       
-      // First extract version from PR title as a fallback
-      const titleVersion = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
+      // Figure out where to get version info from based on whether this is a regular PR merge or a stealth merge
+      let titleVersion, headBranch, branchVersion;
       
-      // Then try to get version from the head branch name (this is more reliable)
-      // The staging branch follows the pattern: {stagingBranch}-v{version}
-      const headBranch = context.payload.pull_request.head.ref;
-      core.info(`PR was merged from branch: ${headBranch}`);
-      
-      // Try to extract version from the staging branch name
-      const branchVersion = extractVersionFromStagingBranch(headBranch, config.stagingBranch);
+      if (isPRMerge) {
+        // Regular PR merge - extract from PR title
+        titleVersion = extractVersionFromPRTitle(context.payload.pull_request.title, config.pullRequestTitle);
+        
+        // Then try to get version from the head branch name (this is more reliable)
+        // The staging branch follows the pattern: {stagingBranch}-v{version}
+        headBranch = context.payload.pull_request.head.ref;
+        core.info(`PR was merged from branch: ${headBranch}`);
+        
+        // Try to extract version from the staging branch name
+        branchVersion = extractVersionFromStagingBranch(headBranch, config.stagingBranch);
+      } else if (detectedPR) {
+        // Stealth PR merge - use info from our detection
+        titleVersion = extractVersionFromPRTitle(detectedPR.title, config.pullRequestTitle);
+        headBranch = detectedPR.headBranch;
+        branchVersion = detectedPR.version;
+        core.info(`Stealth PR was merged from branch: ${headBranch}`);
+      }
       
       // Use branch version if available, otherwise fall back to title version
       let version = branchVersion || titleVersion;
@@ -121,20 +192,19 @@ async function run() {
         throw new Error("Couldn't determine version from PR title or branch name - I'm totally confused! 😵");
       }
       
-      // Check for special bump commands in PR comments
-      const bumpCommandResult = await checkForBumpCommands(octokit, context);
-      
+      // We've already checked for bump commands earlier, so let's use that result
+      // No need to make another API call, we're data-efficient like that! 💅
       if (bumpCommandResult.hasBumpCommand) {
-        core.info(`💋 Found a bump command in the PR comments: /bump ${bumpCommandResult.bumpType}`);
+        core.info(`💋 Found that /bump ${bumpCommandResult.bumpType} command from ${bumpCommandResult.commenter || 'someone fabulous'}!`);
         
         // Apply the bump command to get our new fabulous version
         const originalVersion = version;
         version = applyBumpCommand(version, bumpCommandResult.bumpType);
         
         if (version !== originalVersion) {
-          core.info(`💅 Applied ${bumpCommandResult.bumpType} bump to version: ${originalVersion} → ${version}`);
+          core.info(`💅 Applied ${bumpCommandResult.bumpType} bump to version: ${originalVersion} → ${version} - we're moving up in the world, honey!`);
         } else {
-          core.info(`Version already at appropriate ${bumpCommandResult.bumpType} level (${version}), no change needed`);
+          core.info(`Version ${version} is already fierce enough for a ${bumpCommandResult.bumpType} version - no change needed 🤷‍♀️`);
         }
       }
       
