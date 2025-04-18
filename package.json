@@ -1,7 +1,7 @@
 {
   "name": "release-boss",
   "version": "0.1.0",
-  "description": "A simplified GitHub Action for release management based on conventional commits",
+  "description": "A fabulous GitHub Action for release management - she commits, she conquers, she releases!",
   "main": "dist/index.js",
   "scripts": {
     "build": "ncc build src/index.js -o dist",
@@ -18,9 +18,13 @@
     "release",
     "conventional-commits",
     "versioning",
-    "changelog"
+    "changelog",
+    "release-boss",
+    "automation",
+    "semantic-versioning",
+    "template-processing"
   ],
-  "author": "",
+  "author": "Kaity <kaity@example.com>",
   "license": "MIT",
   "dependencies": {
     "@actions/core": "^1.10.0",
