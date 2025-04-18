@@ -7,6 +7,7 @@
 ### Features
 
 * rebrand to Release Boss with Lady Boss theme 👑💅 ([6bb6293](https://github.com/atikayda/release-boss/commit/6bb6293e24a2445b8ba87cd6a429b916e3fc92a5))
+* add gorgeous Release Boss logo and branding assets 💅👑 ([c8ad871](https://github.com/atikayda/release-boss/commit/c8ad871a7e258f23b85407fb251f94cb6220c67a))
 
 
 
