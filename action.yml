@@ -2,6 +2,10 @@ name: 'Release Boss'
 description: 'Automatically create release PRs based on conventional commits with a simple template-based version update mechanism'
 author: 'Kaity'
 
+branding:
+  icon: 'package'
+  color: 'pink'
+
 inputs:
   token:
     description: 'GitHub token with permissions to create branches and PRs'

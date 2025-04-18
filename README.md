@@ -1,4 +1,12 @@
+<div align="center">
+  <img src="./assets/release-boss-logo.png" alt="Release Boss Logo" width="200" />
+</div>
+
 # ✨ Release Boss ✨
+
+<div align="center">
+  <b>She commits, she conquers, she releases.</b>
+</div>
 
 I'm a super fabulous GitHub Action that makes releasing software as easy as saying "Git push!" 💅 I handle version bumps, changelogs, template processing, and create the cutest PRs you've ever seen - all from your conventional commits! I'm the LADY BOSS of releases! 👸👑
 
