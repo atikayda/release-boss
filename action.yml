@@ -4,7 +4,7 @@ author: 'Kaity'
 
 branding:
   icon: 'package'
-  color: 'pink'
+  color: 'purple'
 
 inputs:
   token:
