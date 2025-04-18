@@ -5,7 +5,7 @@
  * @param {String} currentVersion - Current version
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
- * @param {Object} config - Release manager configuration
+ * @param {Object} config - Release Boss configuration
  * @returns {String} - Generated changelog
  */
 async function generateChangelog(commits, newVersion, currentVersion, octokit, context, config) {

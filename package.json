@@ -1,5 +1,5 @@
 {
-  "name": "release-manager",
+  "name": "release-boss",
   "version": "0.1.0",
   "description": "A simplified GitHub Action for release management based on conventional commits",
   "main": "dist/index.js",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/atikayda/release-manager.git"
+    "url": "git+https://github.com/atikayda/release-boss.git"
   },
   "keywords": [
     "github-action",

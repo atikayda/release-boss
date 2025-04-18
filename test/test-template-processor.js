@@ -55,8 +55,8 @@ async function runTests() {
     console.log(`- Patch updated correctly: ${hasCorrectPatch ? '✅' : '❌'}`);
     
     // Check if template markers are still present
-    const hasSingleLineTemplate = processedVersionGo.includes('%%release-manager: const Version = "v{{version}}"%%');
-    const hasMultiLineTemplate = processedVersionGo.includes('/* %%release-manager:') && 
+    const hasSingleLineTemplate = processedVersionGo.includes('%%release-boss: const Version = "v{{version}}"%%');
+    const hasMultiLineTemplate = processedVersionGo.includes('/* %%release-boss:') && 
                                  processedVersionGo.includes('const Major = "{{major}}"') &&
                                  processedVersionGo.includes('const Minor = "{{minor}}"') &&
                                  processedVersionGo.includes('const Patch = "{{patch}}"') &&

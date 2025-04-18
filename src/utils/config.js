@@ -30,11 +30,11 @@ async function getConfig(configFilePath) {
     // If no config file specified, try to find one in order of preference
     if (!configFilePath) {
       // Check for YAML first (it's more GitHub-friendly!)
-      if (await fileExists('.release-manager.yml') || await fileExists('.release-manager.yaml')) {
-        configFilePath = await fileExists('.release-manager.yml') ? '.release-manager.yml' : '.release-manager.yaml';
+      if (await fileExists('.release-boss.yml') || await fileExists('.release-boss.yaml')) {
+        configFilePath = await fileExists('.release-boss.yml') ? '.release-boss.yml' : '.release-boss.yaml';
       } else {
         // Fall back to JSON if no YAML found
-        configFilePath = '.release-manager.json';
+        configFilePath = '.release-boss.json';
       }
     }
     
