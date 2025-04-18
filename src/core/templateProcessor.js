@@ -41,7 +41,7 @@ async function processVersionFiles(files, version) {
       let foundTemplates = 0;
       while (i < lines.length) {
         const line = lines[i];
-        const templateStartIndex = line.indexOf('%%release-manager:');
+        const templateStartIndex = line.indexOf('%%release-boss:');
         
         // If this is not a template line, just add it and continue
         if (templateStartIndex === -1) {
@@ -58,7 +58,7 @@ async function processVersionFiles(files, version) {
         outputLines.push(line);
         
         // Determine if it's a single-line or multi-line template
-        const startMarkerEnd = templateStartIndex + '%%release-manager:'.length;
+        const startMarkerEnd = templateStartIndex + '%%release-boss:'.length;
         const templateEndInSameLine = line.indexOf('%%', startMarkerEnd);
         
         let templateContent;
@@ -123,7 +123,7 @@ async function processVersionFiles(files, version) {
         
         while (implementationEndLine < lines.length) {
           // Stop if we find another template marker
-          if (lines[implementationEndLine].includes('%%release-manager:')) {
+          if (lines[implementationEndLine].includes('%%release-boss:')) {
             break;
           }
           

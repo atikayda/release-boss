@@ -1,6 +1,10 @@
-name: 'Release Manager'
+name: 'Release Boss'
 description: 'Automatically create release PRs based on conventional commits with a simple template-based version update mechanism'
 author: 'Kaity'
+
+branding:
+  icon: 'package'
+  color: 'pink'
 
 inputs:
   token:
@@ -8,9 +12,9 @@ inputs:
     required: true
     default: ${{ github.token }}
   config-file:
-    description: 'Path to release-manager config file'
+    description: 'Path to Release Boss config file'
     required: false
-    default: '.release-manager.json'
+    default: '.release-boss.json'
 
 outputs:
   run_type:
@@ -53,7 +57,3 @@ outputs:
 runs:
   using: 'node16'
   main: 'dist/index.js'
-
-branding:
-  icon: 'git-pull-request'
-  color: 'blue'

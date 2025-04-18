@@ -25,7 +25,7 @@ const EXCLUDED_TYPES = ['chore'];
  * Analyze commits between two branches to determine the type of version bump
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
- * @param {Object} config - Release manager configuration
+ * @param {Object} config - Release Boss configuration
  * @returns {Array} - Array of parsed and analyzed commits
  */
 async function analyzeCommits(octokit, context, config) {
@@ -143,7 +143,7 @@ function isExcludedFromChangelog(parsedCommit) {
  * @param {Array} commits - Array of parsed and analyzed commits
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
- * @param {Object} config - Release manager configuration
+ * @param {Object} config - Release Boss configuration
  * @returns {Object} - Bump type and new version information
  */
 async function determineVersionBump(commits, octokit, context, config) {

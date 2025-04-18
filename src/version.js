@@ -1,5 +1,5 @@
 /**
- * This file defines the current version of Release Manager
+ * This file defines the current version of Release Boss
  * It gets processed during releases to update the version number
  */
 

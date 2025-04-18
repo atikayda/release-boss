@@ -45,10 +45,10 @@ jobs:
           git diff --quiet && git diff --staged --quiet || git commit -m "chore: update dist files"
           git push
       
-      - name: Run Release Manager
+      - name: Run Release Boss
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # No config-file specified - will auto-detect YAML first, then fall back to JSON
           # You can specify a path if you want to use a custom location:
-          # config-file: .github/release-manager-config.yml
+          # config-file: .github/release-boss-config.yml

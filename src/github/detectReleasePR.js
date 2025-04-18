@@ -13,7 +13,7 @@
  * Detect if a push event is actually a merged release PR
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context (has repo, payload info)
- * @param {Object} config - Release Manager config
+ * @param {Object} config - Release Boss config
  * @returns {Promise<Object>} PR info if detected, null otherwise
  */
 async function detectReleasePR(octokit, context, config) {

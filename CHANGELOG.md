@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 (2025-04-18)
+
+## [1.2.0](https://github.com/atikayda/release-boss/compare/v1.1.0...v1.2.0) (2025-04-18)
+
+### Features
+
+* rebrand to Release Boss with Lady Boss theme 👑💅 ([6bb6293](https://github.com/atikayda/release-boss/commit/6bb6293e24a2445b8ba87cd6a429b916e3fc92a5))
+* add gorgeous Release Boss logo and branding assets 💅👑 ([c8ad871](https://github.com/atikayda/release-boss/commit/c8ad871a7e258f23b85407fb251f94cb6220c67a))
+
+
+
 ## 1.1.0 (2025-04-17)
 
 ## [1.1.0](https://github.com/atikayda/release-manager/compare/v1.0.0...v1.1.0) (2025-04-17)
