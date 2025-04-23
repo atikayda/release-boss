@@ -27,6 +27,7 @@ Release Boss (she/her) handles the following tasks with style and sass:
    - Creates and updates release PRs with detailed information
    - Detects "stealth" PR merges that appear as regular pushes
    - Supports branch-based detection for release PRs
+   - Automatically cleans up staging branches after PR merge or closure (configurable)
 
 5. **Tagging & Release Management** 🏷️
    - Creates version tags when PRs are merged

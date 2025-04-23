@@ -1164,10 +1164,54 @@ async function commitMultipleFilesToStaging(octokit, context, files, message, br
   console.log(`Files: ${files.map(f => f.path).join(', ')}`);
 }
 
+/**
+ * Delete a branch after a PR is merged or closed
+ * @param {Object} octokit - GitHub API client
+ * @param {Object} context - GitHub context
+ * @param {String} branch - Branch to delete
+ * @returns {Boolean} - Whether the branch was successfully deleted
+ */
+async function deleteBranch(octokit, context, branch) {
+  const { owner, repo } = context.repo;
+  console.log(`Attempting to delete branch ${branch} - cleaning up after ourselves like the fabulous queen we are! 💁‍♀️`);
+  
+  try {
+    // First check if the branch exists
+    try {
+      await octokit.rest.repos.getBranch({
+        owner,
+        repo,
+        branch
+      });
+    } catch (error) {
+      // If branch doesn't exist, that's fine - just return
+      if (error.status === 404) {
+        console.log(`Branch ${branch} doesn't exist, no need to delete it 💅`);
+        return false;
+      }
+      throw error; // Re-throw other errors
+    }
+    
+    // Delete the branch
+    await octokit.rest.git.deleteRef({
+      owner,
+      repo,
+      ref: `heads/${branch}`
+    });
+    
+    console.log(`Successfully deleted branch ${branch} - keeping things tidy! ✨`);
+    return true;
+  } catch (error) {
+    console.error(`Error deleting branch ${branch}: ${error.message}`);
+    return false;
+  }
+}
+
 module.exports = {
   createOrUpdatePR,
   updateExistingPR,
   tagRelease,
   commitFileToStaging,
-  commitMultipleFilesToStaging
+  commitMultipleFilesToStaging,
+  deleteBranch
 };
