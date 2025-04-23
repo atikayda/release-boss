@@ -257,6 +257,24 @@ For those projects still finding their way:
 3. Configure which files to process in `.release-boss.yml` or `.release-boss.json`
 4. Push changes and let Release Boss handle the rest!
 
+## 🔄 Release Workflow
+
+Release Boss follows a fabulous GitFlow-inspired approach to make your releases absolutely flawless! 👑
+
+### How It Works
+
+1. **Starting Point**: When it's time for a release, Release Boss creates a staging branch from your release branch (not main!) to ensure stability
+2. **Feature Integration**: She then merges your main branch into this staging branch to bring in all your gorgeous new features
+3. **Version Magic**: After the merge, she updates version files and generates a stunning changelog based on what's in the staging branch
+4. **PR Creation**: A pull request is created from staging → release branch for your review
+5. **Tagging Time**: When you merge the PR, she automatically creates version tags with optional major/minor aliases
+
+This GitFlow-based approach gives you:
+- 💎 Cleaner merge history
+- 🛡️ Protection against conflicts
+- 🔍 Better visibility into what's being released
+- 🧩 Proper separation between development and releases
+
 ## 💡 Tips & Tricks
 
 - **Preview Version Bumps**: Need to know what version will be next? Look at the PR title!
