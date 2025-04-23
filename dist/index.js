@@ -65335,24 +65335,49 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
     console.log(`Updating staging branch ${stagingBranch} using merge commit approach...`);
     
     try {
-      // Create a merge commit between the release branch and the main branch
-      console.log(`Creating merge commit between ${config.releaseBranch} and ${config.mergeBranch}...`);
+      // Try a simple merge first
+      console.log(`Attempting to merge ${config.mergeBranch} into ${stagingBranch}...`);
       
-      // Create a merge commit with release branch as base and main branch as head
-      
-      // Create a merge commit with release branch as base and main branch as head
-      const { data: mergeCommit } = await octokit.rest.repos.merge({
-        owner,
-        repo,
-        base: stagingBranch,           // The branch we want to update
-        head: mergeBranchSha,         // The SHA of the main branch to include changes from
-        commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
-      }).catch(async error => {
-        // If merge fails (conflict or other reason), reset and create new branch
-        if (error.status === 409) { // Conflict
-          console.log(`Merge conflict detected, resetting branch to ${config.releaseBranch} base`);
+      try {
+        const { data: mergeCommit } = await octokit.rest.repos.merge({
+          owner,
+          repo,
+          base: stagingBranch,           // The branch we want to update
+          head: mergeBranchSha,         // The SHA of the main branch to include changes from
+          commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
+        });
+        
+        console.log(`Successfully updated staging branch with merge commit ${mergeCommit.sha.substring(0, 7)} 💃`);
+      } catch (mergeError) {
+        // If merge fails due to conflicts, use our smart conflict resolution strategy
+        if (mergeError.message.includes('Merge conflict')) {
+          console.log(`Merge conflict detected when updating ${stagingBranch}. Let's resolve it with our fabulous conflict resolution strategy! 💅`);
           
-          // Force update the staging branch ref to match release branch
+          // First, let's get the list of version and changelog files that we want to preserve from release branch
+          const preserveFiles = [];
+          
+          // Add changelog file if configured
+          if (config.changelogPath) {
+            preserveFiles.push(config.changelogPath);
+          }
+          
+          // Add version files if configured
+          if (config.versionFiles && Array.isArray(config.versionFiles)) {
+            preserveFiles.push(...config.versionFiles);
+          }
+          
+          // Add update files if configured (just the file paths)
+          if (config.updateFiles && Array.isArray(config.updateFiles)) {
+            for (const updateFile of config.updateFiles) {
+              if (updateFile.file && !preserveFiles.includes(updateFile.file)) {
+                preserveFiles.push(updateFile.file);
+              }
+            }
+          }
+          
+          console.log(`Files to preserve from ${config.releaseBranch}: ${preserveFiles.join(', ')}`);
+          
+          // Reset the staging branch to match release branch exactly
           await octokit.rest.git.updateRef({
             owner,
             repo,
@@ -65361,38 +65386,117 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
             force: true
           });
           
-          // Now create a merge commit
-          const { data } = await octokit.rest.repos.merge({
+          console.log(`Reset ${stagingBranch} to match ${config.releaseBranch} exactly`);
+          
+          // For each file in preserveFiles, ensure we have the content from release branch
+          for (const filePath of preserveFiles) {
+            try {
+              // Get file content from release branch
+              const { data: fileContent } = await octokit.rest.repos.getContent({
+                owner,
+                repo,
+                path: filePath,
+                ref: config.releaseBranch
+              });
+              
+              // If file exists, ensure it's preserved in staging branch
+              if (fileContent) {
+                const content = Buffer.from(fileContent.content, 'base64').toString();
+                await commitFileToStaging(
+                  octokit, 
+                  context, 
+                  filePath, 
+                  content, 
+                  `chore: preserve ${filePath} from ${config.releaseBranch} for release ${newVersion}`,
+                  stagingBranch
+                );
+                console.log(`Preserved ${filePath} from ${config.releaseBranch} in ${stagingBranch}`);
+              }
+            } catch (fileError) {
+              // If file doesn't exist in release branch, that's fine
+              if (fileError.status !== 404) {
+                console.warn(`Warning: Could not preserve ${filePath} from ${config.releaseBranch}: ${fileError.message}`);
+              }
+            }
+          }
+          
+          // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
+          // We'll do this by getting the content of each file in main and committing it to staging
+          // if it's not in the preserveFiles list
+          
+          // Get the list of files in main branch
+          const { data: mainFiles } = await octokit.rest.git.getTree({
             owner,
             repo,
-            base: stagingBranch,           // Now reset to release branch
-            head: mergeBranchSha,         // The SHA of the main branch
-            commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion} (after resolving conflicts)`
+            tree_sha: mergeBranchSha,
+            recursive: 1
           });
           
-          return data;
+          // For each file in main, if it's not in preserveFiles, copy it to staging
+          for (const file of mainFiles.tree) {
+            if (file.type === 'blob' && !preserveFiles.includes(file.path)) {
+              try {
+                // Get file content from main branch
+                const { data: fileContent } = await octokit.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: file.path,
+                  ref: config.mergeBranch
+                });
+                
+                // If file exists, copy it to staging branch
+                if (fileContent && fileContent.content) {
+                  const content = Buffer.from(fileContent.content, 'base64').toString();
+                  await commitFileToStaging(
+                    octokit, 
+                    context, 
+                    file.path, 
+                    content, 
+                    `chore: update ${file.path} from ${config.mergeBranch} for release ${newVersion}`,
+                    stagingBranch
+                  );
+                  console.log(`Updated ${file.path} from ${config.mergeBranch} in ${stagingBranch}`);
+                }
+              } catch (fileError) {
+                // If we can't get the file content, that's okay - just skip it
+                console.warn(`Warning: Could not update ${file.path} from ${config.mergeBranch}: ${fileError.message}`);
+              }
+            }
+          }
+          
+          console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
         } else {
-          throw error; // Re-throw unexpected errors
+          // If it's not a merge conflict, rethrow the error
+          console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${mergeError.message}`);
+          throw mergeError;
         }
-      });
+      }
       
-      if (mergeCommit) {
-        console.log(`Successfully updated staging branch with merge commit ${mergeCommit.sha.substring(0, 7)}`);
-      } else {
-        // If no merge commit was created (branches might be identical)
-        console.log(`No changes to merge from ${config.mergeBranch} to ${stagingBranch}, branches may be identical`);
-        console.log(`Staging branch SHA: ${releaseBranchSha.substring(0, 7)}`);
-        // Force some difference by adding a dummy commit if needed
-        // This prevents GitHub from closing the PR due to no differences
-        console.log(`Creating empty commit to prevent PR from being auto-closed...`);
+      // Check if we need to add a dummy commit to prevent GitHub from closing the PR
+      try {
+        // Compare the staging branch with the release branch to see if they're identical
+        const { data: comparison } = await octokit.rest.repos.compareCommits({
+          owner,
+          repo,
+          base: config.releaseBranch,
+          head: stagingBranch
+        });
         
-        // Create a dummy file or modification to prevent PR from being closed
-        // Get current timestamp to ensure uniqueness
-        const timestamp = new Date().toISOString();
-        const dummyContent = `# Release Boss Timestamp\n\nThis file ensures that the staging branch differs from the release branch.\nTimestamp: ${timestamp}\n`;
-        
-        await commitFileToStaging(octokit, context, '.release-timestamp', dummyContent, 
-          `chore: maintain PR state for release ${newVersion}`, stagingBranch);
+        if (comparison.files.length === 0 || comparison.total_commits === 0) {
+          console.log(`No differences detected between ${stagingBranch} and ${config.releaseBranch}, adding dummy commit...`);
+          
+          // Create a dummy file or modification to prevent PR from being closed
+          // Get current timestamp to ensure uniqueness
+          const timestamp = new Date().toISOString();
+          const dummyContent = `# Release Boss Timestamp\n\nThis file ensures that the staging branch differs from the release branch.\nTimestamp: ${timestamp}\n`;
+          
+          await commitFileToStaging(octokit, context, '.release-timestamp', dummyContent,
+            `chore: maintain PR state for release ${newVersion}`, stagingBranch);
+            
+          console.log(`Added dummy commit to ${stagingBranch} to prevent PR from being auto-closed 💅`);
+        }
+      } catch (compareError) {
+        console.warn(`Warning: Could not compare branches: ${compareError.message}`);
       }
     } catch (error) {
       console.error(`Error updating staging branch: ${error.message}`);

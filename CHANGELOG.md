@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.1 (2025-04-23)
+
+## [1.4.1](https://github.com/atikayda/release-boss/compare/v1.4.0...v1.4.1) (2025-04-23)
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* improve conflict resolution strategy for existing branches 💅 ([712e7ba](https://github.com/atikayda/release-boss/commit/712e7ba3be8e9e57f0cf17fe496f5d40e096064c))
+
+
+
 ## 1.4.0 (2025-04-23)
 
 ## [1.4.0](https://github.com/atikayda/release-boss/compare/v1.3.1...v1.4.0) (2025-04-23)
