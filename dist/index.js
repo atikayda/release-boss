@@ -60837,36 +60837,90 @@ module.exports = {
 const fs = (__nccwpck_require__(7147).promises);
 const path = __nccwpck_require__(1017);
 
+const { Octokit } = __nccwpck_require__(7043);
+const github = __nccwpck_require__(5438);
+
 /**
  * Process files with inline version templates
  * @param {Array} files - List of files to process
  * @param {String} version - New version to inject
+ * @param {Object} options - Additional options
+ * @param {String} options.releaseBranch - Release branch to check for existing content
  * @returns {Array} - List of processed files
  */
-async function processVersionFiles(files, version) {
+async function processVersionFiles(files, version, options = {}) {
   const [major, minor, patch] = version.split('.');
   const processedFiles = [];
   
   console.log(`Starting version file processing for ${files.length} files with version ${version}`);
   console.log(`Parsed version parts: major=${major}, minor=${minor}, patch=${patch}`);
   
+  // Set up GitHub client if we're in a GitHub Action
+  let octokit = null;
+  let context = null;
+  let isGitHubAction = false;
+  
+  try {
+    const token = process.env.GITHUB_TOKEN || process.env.INPUT_TOKEN;
+    if (token) {
+      octokit = github.getOctokit(token);
+      context = github.context;
+      isGitHubAction = true;
+      console.log(`✨ GitHub API client initialized - we'll try to avoid conflicts by checking the release branch first 💅`);
+    }
+  } catch (e) {
+    console.log(`Not running in GitHub Actions or token not available: ${e.message}`);
+  }
+  
+  // Determine which branches to check for existing content
+  const releaseBranch = options.releaseBranch || 'release';
+  
   for (const file of files) {
     console.log(`\nProcessing version file: ${file}`);
     try {
-      // Verify file exists
-      try {
-        await fs.access(file);
-        console.log(`File exists!`);
-      } catch (err) {
-        console.error(`CRITICAL ERROR: File does not exist or cannot be accessed: ${file}`);
-        console.error(`Error details: ${err.message}`); 
-        continue; // Skip to next file
+      // Try to get content from GitHub API first to avoid conflicts
+      let content = null;
+      let contentSource = 'local';
+      
+      if (isGitHubAction) {
+        try {
+          console.log(`Trying to fetch ${file} from ${releaseBranch} branch first to avoid conflicts...`);
+          const { owner, repo } = context.repo;
+          const { data } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: file,
+            ref: releaseBranch
+          });
+          
+          content = Buffer.from(data.content, 'base64').toString('utf8');
+          contentSource = `${releaseBranch} branch`;
+          console.log(`✨ Successfully retrieved ${file} from ${releaseBranch} branch to avoid conflicts!`);
+        } catch (error) {
+          console.log(`Couldn't get ${file} from ${releaseBranch} branch: ${error.message}`);
+          console.log(`Will use local file instead...`);
+        }
       }
       
-      const content = await fs.readFile(file, 'utf8');
-      console.log(`File read successfully (${content.length} bytes)`); 
-      console.log(`Looking for version template markers...`);
+      // Fall back to local file if we couldn't get it from GitHub
+      if (!content) {
+        // Verify file exists locally
+        try {
+          await fs.access(file);
+          console.log(`Local file exists!`);
+        } catch (err) {
+          console.error(`CRITICAL ERROR: File does not exist or cannot be accessed: ${file}`);
+          console.error(`Error details: ${err.message}`); 
+          continue; // Skip to next file
+        }
+        
+        content = await fs.readFile(file, 'utf8');
+        console.log(`File read successfully from local filesystem (${content.length} bytes)`);
+      } else {
+        console.log(`Using content from ${contentSource} to avoid conflicts 💅`);
+      }
       
+      console.log(`Looking for version template markers...`);
       console.log(`File content preview (first 200 chars):\n${content.substring(0, 200)}...`);
       
       const lines = content.split('\n');
@@ -61451,16 +61505,34 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
   
   // Step 3: Create or reset staging branch
   if (!stagingBranchExists) {
-    // For new branches, create from merge branch
-    console.log(`Creating staging branch ${stagingBranch} from ${config.mergeBranch}...`);
+    // For new branches, create from release branch (not merge branch)
+    // This follows the traditional release branch workflow
+    console.log(`Creating staging branch ${stagingBranch} from ${config.releaseBranch}...`);
     await octokit.rest.git.createRef({
       owner,
       repo,
       ref: `refs/heads/${stagingBranch}`,
-      sha: mergeBranchSha
+      sha: releaseBranchSha  // Use release branch SHA as base
     });
     
-    console.log(`Created staging branch: ${stagingBranch}`);
+    console.log(`Created staging branch: ${stagingBranch} from ${config.releaseBranch} 💅`);
+    
+    // Now merge the main branch into the staging branch
+    console.log(`Merging ${config.mergeBranch} into new staging branch...`);
+    try {
+      const { data: mergeCommit } = await octokit.rest.repos.merge({
+        owner,
+        repo,
+        base: stagingBranch,           // The staging branch we just created
+        head: mergeBranchSha,         // The SHA of the main branch to include changes from
+        commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
+      });
+      
+      console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
+    } catch (error) {
+      console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${error.message}`);
+      throw error;
+    }
   } else {
     // For existing branches, we want to recreate the PR changes based on the latest release branch
     // to avoid conflicts, especially with the changelog
@@ -61811,30 +61883,59 @@ async function updateChangelog(octokit, context, changelogPath, newChanges, vers
   
   console.log(`Updating changelog for ${version} in ${branch}...`);
   
-  // If releaseBranch is provided, get content from there to avoid conflicts
-  // otherwise try to get content from the branch itself
-  const sourceRef = releaseBranch || branch;
+  // ALWAYS try to get content from the release branch first to avoid conflicts
+  // This ensures we're building on top of what's already in the release branch
+  const sourceBranches = [];
   
-  // Get current content of the changelog
+  // First priority: specified release branch
+  if (releaseBranch) {
+    sourceBranches.push(releaseBranch);
+  }
+  
+  // Second priority: default release branch (usually 'release')
+  if (!releaseBranch || releaseBranch !== 'release') {
+    sourceBranches.push('release');
+  }
+  
+  // Last resort: the branch we're updating
+  if (branch !== 'release' && !sourceBranches.includes(branch)) {
+    sourceBranches.push(branch);
+  }
+  
+  console.log(`Will try to fetch changelog content from branches in this order: ${sourceBranches.join(', ')}`);
+  
+  // Get current content of the changelog from the first available source
   let baseContent = '';
-  try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: changelogPath,
-      ref: sourceRef
-    });
-    
-    // Decode content from base64
-    baseContent = Buffer.from(data.content, 'base64').toString('utf8');
-    console.log(`Retrieved base changelog from ${sourceRef} branch`);
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`Changelog file doesn't exist yet in ${sourceRef}, will start fresh`);
-    } else {
-      console.error(`Error getting changelog from ${sourceRef}:`, error);
-      throw error;
+  let sourceUsed = null;
+  
+  for (const sourceRef of sourceBranches) {
+    try {
+      console.log(`Attempting to get changelog from ${sourceRef} branch...`);
+      const { data } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path: changelogPath,
+        ref: sourceRef
+      });
+      
+      // Decode content from base64
+      baseContent = Buffer.from(data.content, 'base64').toString('utf8');
+      sourceUsed = sourceRef;
+      console.log(`✨ Successfully retrieved base changelog from ${sourceRef} branch!`);
+      break; // We found content, no need to check other branches
+    } catch (error) {
+      if (error.status === 404) {
+        console.log(`Changelog file doesn't exist in ${sourceRef} branch, trying next source...`);
+      } else {
+        console.log(`Error getting changelog from ${sourceRef}, trying next source: ${error.message}`);
+      }
     }
+  }
+  
+  if (!sourceUsed) {
+    console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
+  } else {
+    console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
   }
   
   // Add new content at the top of the changelog
@@ -61858,7 +61959,7 @@ async function updateChangelog(octokit, context, changelogPath, newChanges, vers
   await commitFileToStaging(octokit, context, changelogPath, updatedContent, 
     `chore: update changelog for ${version}`, branch);
   
-  console.log(`Updated changelog in ${branch}`);
+  console.log(`Updated changelog in ${branch} 📝`);
 }
 
 /**
@@ -62235,6 +62336,14 @@ module.exports = {
   MINOR: '0',
   PATCH: '0'
 };
+
+
+/***/ }),
+
+/***/ 7043:
+/***/ ((module) => {
+
+module.exports = eval("require")("@octokit/rest");
 
 
 /***/ }),
@@ -64588,7 +64697,11 @@ async function run() {
         core.info(`Processing ${config.versionFiles.length} version files:`);
         config.versionFiles.forEach(file => core.info(`  - ${file}`));
         
-        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion);
+        // Pass the release branch info to avoid conflicts
+        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion, {
+          releaseBranch: config.releaseBranch
+        });
+        
         core.info(`\nSuccessfully processed ${processedVersionFiles.length} version files:`);
         processedVersionFiles.forEach(file => core.info(`  - ${file}`));
         updatedFiles.push(...processedVersionFiles);
