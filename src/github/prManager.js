@@ -66,16 +66,34 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
   
   // Step 3: Create or reset staging branch
   if (!stagingBranchExists) {
-    // For new branches, create from merge branch
-    console.log(`Creating staging branch ${stagingBranch} from ${config.mergeBranch}...`);
+    // For new branches, create from release branch (not merge branch)
+    // This follows the traditional release branch workflow
+    console.log(`Creating staging branch ${stagingBranch} from ${config.releaseBranch}...`);
     await octokit.rest.git.createRef({
       owner,
       repo,
       ref: `refs/heads/${stagingBranch}`,
-      sha: mergeBranchSha
+      sha: releaseBranchSha  // Use release branch SHA as base
     });
     
-    console.log(`Created staging branch: ${stagingBranch}`);
+    console.log(`Created staging branch: ${stagingBranch} from ${config.releaseBranch} 💅`);
+    
+    // Now merge the main branch into the staging branch
+    console.log(`Merging ${config.mergeBranch} into new staging branch...`);
+    try {
+      const { data: mergeCommit } = await octokit.rest.repos.merge({
+        owner,
+        repo,
+        base: stagingBranch,           // The staging branch we just created
+        head: mergeBranchSha,         // The SHA of the main branch to include changes from
+        commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
+      });
+      
+      console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
+    } catch (error) {
+      console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${error.message}`);
+      throw error;
+    }
   } else {
     // For existing branches, we want to recreate the PR changes based on the latest release branch
     // to avoid conflicts, especially with the changelog
@@ -426,30 +444,59 @@ async function updateChangelog(octokit, context, changelogPath, newChanges, vers
   
   console.log(`Updating changelog for ${version} in ${branch}...`);
   
-  // If releaseBranch is provided, get content from there to avoid conflicts
-  // otherwise try to get content from the branch itself
-  const sourceRef = releaseBranch || branch;
+  // ALWAYS try to get content from the release branch first to avoid conflicts
+  // This ensures we're building on top of what's already in the release branch
+  const sourceBranches = [];
   
-  // Get current content of the changelog
+  // First priority: specified release branch
+  if (releaseBranch) {
+    sourceBranches.push(releaseBranch);
+  }
+  
+  // Second priority: default release branch (usually 'release')
+  if (!releaseBranch || releaseBranch !== 'release') {
+    sourceBranches.push('release');
+  }
+  
+  // Last resort: the branch we're updating
+  if (branch !== 'release' && !sourceBranches.includes(branch)) {
+    sourceBranches.push(branch);
+  }
+  
+  console.log(`Will try to fetch changelog content from branches in this order: ${sourceBranches.join(', ')}`);
+  
+  // Get current content of the changelog from the first available source
   let baseContent = '';
-  try {
-    const { data } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: changelogPath,
-      ref: sourceRef
-    });
-    
-    // Decode content from base64
-    baseContent = Buffer.from(data.content, 'base64').toString('utf8');
-    console.log(`Retrieved base changelog from ${sourceRef} branch`);
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`Changelog file doesn't exist yet in ${sourceRef}, will start fresh`);
-    } else {
-      console.error(`Error getting changelog from ${sourceRef}:`, error);
-      throw error;
+  let sourceUsed = null;
+  
+  for (const sourceRef of sourceBranches) {
+    try {
+      console.log(`Attempting to get changelog from ${sourceRef} branch...`);
+      const { data } = await octokit.rest.repos.getContent({
+        owner,
+        repo,
+        path: changelogPath,
+        ref: sourceRef
+      });
+      
+      // Decode content from base64
+      baseContent = Buffer.from(data.content, 'base64').toString('utf8');
+      sourceUsed = sourceRef;
+      console.log(`✨ Successfully retrieved base changelog from ${sourceRef} branch!`);
+      break; // We found content, no need to check other branches
+    } catch (error) {
+      if (error.status === 404) {
+        console.log(`Changelog file doesn't exist in ${sourceRef} branch, trying next source...`);
+      } else {
+        console.log(`Error getting changelog from ${sourceRef}, trying next source: ${error.message}`);
+      }
     }
+  }
+  
+  if (!sourceUsed) {
+    console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
+  } else {
+    console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
   }
   
   // Add new content at the top of the changelog
@@ -473,7 +520,7 @@ async function updateChangelog(octokit, context, changelogPath, newChanges, vers
   await commitFileToStaging(octokit, context, changelogPath, updatedContent, 
     `chore: update changelog for ${version}`, branch);
   
-  console.log(`Updated changelog in ${branch}`);
+  console.log(`Updated changelog in ${branch} 📝`);
 }
 
 /**

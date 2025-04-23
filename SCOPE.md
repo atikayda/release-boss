@@ -165,23 +165,63 @@ inputs:
     # No default - will auto-detect .release-boss.yml or .release-boss.json
 ```
 
+## 🔄 Release Workflow Architecture
+
+Release Boss follows a fabulous GitFlow-inspired approach that's both elegant and practical! 💁‍♀️
+
+### GitFlow Branch Strategy
+
+Unlike simpler tools that just create PRs from main → release, Release Boss takes a more sophisticated approach:
+
+1. **Base Branch Selection**:
+   - She starts with your release branch as the base (not main!) 💅
+   - This ensures stability and continuity between releases
+   - Preserves any release-specific configurations
+
+2. **Staging Branch Creation**:
+   - Creates a staging branch from the release branch
+   - Format: `staging-v{version}` (e.g., `staging-v1.2.0`)
+   - This becomes your preview environment for the release
+
+3. **Feature Integration**:
+   - Merges your main branch into the staging branch
+   - Brings in all your new features and fixes
+   - Handles merge conflicts gracefully during PR creation
+
+4. **Post-Merge Processing**:
+   - After merging main, she updates version files and changelog
+   - Uses smart conflict avoidance by checking release branch content first
+   - Ensures clean, conflict-free PRs
+
+5. **PR & Release Flow**:
+   - Creates a PR from staging → release for your review
+   - When merged, automatically tags the release
+   - Optionally updates major/minor/latest tag aliases
+
+This approach gives you all the benefits of GitFlow without the complexity! 💖
+
 ## ✨ Recent Enhancements
 
-1. **YAML Configuration Support**:
+1. **GitFlow-Based Release Process**:
+   - Improved branch strategy for cleaner merges
+   - Enhanced conflict avoidance in changelog and version files
+   - Better alignment with enterprise release practices
+
+2. **YAML Configuration Support**:
    - She now supports YAML configuration files
    - More GitHub-friendly with comment support
    - She automatically detects configuration format
 
-2. **PR Comment Commands**:
+3. **PR Comment Commands**:
    - Support for `/bump major` and `/bump minor` commands in PR comments
    - Allows users to override the calculated version bump
 
-3. **Improved PR Detection**:
+4. **Improved PR Detection**:
    - Enhanced detection of "stealth" PR merges
    - Better handling of emoji-filled PR titles
    - More flexible branch name pattern matching
 
-4. **Code Cleanup**:
+5. **Code Cleanup**:
    - Removed unused functions and variables
    - Improved code organization and maintainability
    - Enhanced logging with playful messages
