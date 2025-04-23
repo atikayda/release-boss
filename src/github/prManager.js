@@ -126,7 +126,10 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           
           console.log(`Reset ${stagingBranch} to match ${config.releaseBranch} exactly`);
           
-          // For each file in preserveFiles, ensure we have the content from release branch
+          // Collect all files from release branch that need to be preserved
+          console.log(`Collecting files from ${config.releaseBranch} to preserve in ${stagingBranch}...`);
+          const filesToPreserve = [];
+          
           for (const filePath of preserveFiles) {
             try {
               // Get file content from release branch
@@ -137,18 +140,14 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
                 ref: config.releaseBranch
               });
               
-              // If file exists, ensure it's preserved in staging branch
+              // If file exists, add it to our batch
               if (fileContent) {
                 const content = Buffer.from(fileContent.content, 'base64').toString();
-                await commitFileToStaging(
-                  octokit, 
-                  context, 
-                  filePath, 
-                  content, 
-                  `chore: preserve ${filePath} from ${config.releaseBranch} for release ${newVersion}`,
-                  stagingBranch
-                );
-                console.log(`Preserved ${filePath} from ${config.releaseBranch} in ${stagingBranch}`);
+                filesToPreserve.push({
+                  path: filePath,
+                  content: content
+                });
+                console.log(`Added ${filePath} from ${config.releaseBranch} to preservation batch`);
               }
             } catch (fileError) {
               // If file doesn't exist in release branch, that's fine
@@ -156,6 +155,18 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
                 console.warn(`Warning: Could not preserve ${filePath} from ${config.releaseBranch}: ${fileError.message}`);
               }
             }
+          }
+          
+          // Commit all preserved files in a single batch
+          if (filesToPreserve.length > 0) {
+            await commitMultipleFilesToStaging(
+              octokit,
+              context,
+              filesToPreserve,
+              `chore: preserve files from ${config.releaseBranch} for release ${newVersion} 💅`,
+              stagingBranch
+            );
+            console.log(`Preserved ${filesToPreserve.length} files from ${config.releaseBranch} in a single fabulous commit! 💁‍♀️`);
           }
           
           // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
@@ -170,7 +181,13 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
             recursive: 1
           });
           
-          // For each file in main, if it's not in preserveFiles, copy it to staging
+          // Collect all files from merge branch that need to be copied
+          console.log(`Collecting files from ${config.mergeBranch} to update in ${stagingBranch}...`);
+          const filesToUpdate = [];
+          const batchSize = 50; // Process files in batches to avoid overwhelming the API
+          let currentBatch = [];
+          let batchCount = 0;
+          
           for (const file of mainFiles.tree) {
             if (file.type === 'blob' && !preserveFiles.includes(file.path)) {
               try {
@@ -182,18 +199,29 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
                   ref: config.mergeBranch
                 });
                 
-                // If file exists, copy it to staging branch
+                // If file exists, add it to our batch
                 if (fileContent && fileContent.content) {
                   const content = Buffer.from(fileContent.content, 'base64').toString();
-                  await commitFileToStaging(
-                    octokit, 
-                    context, 
-                    file.path, 
-                    content, 
-                    `chore: update ${file.path} from ${config.mergeBranch} for release ${newVersion}`,
-                    stagingBranch
-                  );
-                  console.log(`Updated ${file.path} from ${config.mergeBranch} in ${stagingBranch}`);
+                  currentBatch.push({
+                    path: file.path,
+                    content: content
+                  });
+                  console.log(`Added ${file.path} from ${config.mergeBranch} to update batch`);
+                  
+                  // If we've reached our batch size, commit this batch
+                  if (currentBatch.length >= batchSize) {
+                    batchCount++;
+                    await commitMultipleFilesToStaging(
+                      octokit,
+                      context,
+                      currentBatch,
+                      `chore: update files from ${config.mergeBranch} (batch ${batchCount}) for release ${newVersion} 💅`,
+                      stagingBranch
+                    );
+                    console.log(`Updated ${currentBatch.length} files from ${config.mergeBranch} in batch ${batchCount} 💁‍♀️`);
+                    filesToUpdate.push(...currentBatch);
+                    currentBatch = [];
+                  }
                 }
               } catch (fileError) {
                 // If we can't get the file content, that's okay - just skip it
@@ -201,6 +229,22 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
               }
             }
           }
+          
+          // Commit any remaining files in the final batch
+          if (currentBatch.length > 0) {
+            batchCount++;
+            await commitMultipleFilesToStaging(
+              octokit,
+              context,
+              currentBatch,
+              `chore: update files from ${config.mergeBranch} (batch ${batchCount}) for release ${newVersion} 💅`,
+              stagingBranch
+            );
+            console.log(`Updated ${currentBatch.length} files from ${config.mergeBranch} in final batch ${batchCount} 💁‍♀️`);
+            filesToUpdate.push(...currentBatch);
+          }
+          
+          console.log(`Total files updated from ${config.mergeBranch}: ${filesToUpdate.length}`);
           
           console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
         } catch (resolveError) {
@@ -360,8 +404,13 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           const timestamp = new Date().toISOString();
           const dummyContent = `# Release Boss Timestamp\n\nThis file ensures that the staging branch differs from the release branch.\nTimestamp: ${timestamp}\n`;
           
-          await commitFileToStaging(octokit, context, '.release-timestamp', dummyContent,
-            `chore: maintain PR state for release ${newVersion}`, stagingBranch);
+          await commitMultipleFilesToStaging(
+            octokit,
+            context,
+            [{ path: '.release-timestamp', content: dummyContent }],
+            `chore: maintain PR state for release ${newVersion} 💅`,
+            stagingBranch
+          );
             
           console.log(`Added dummy commit to ${stagingBranch} to prevent PR from being auto-closed 💅`);
         }
