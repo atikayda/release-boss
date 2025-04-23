@@ -1,36 +1,90 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+const { Octokit } = require('@octokit/rest');
+const github = require('@actions/github');
+
 /**
  * Process files with inline version templates
  * @param {Array} files - List of files to process
  * @param {String} version - New version to inject
+ * @param {Object} options - Additional options
+ * @param {String} options.releaseBranch - Release branch to check for existing content
  * @returns {Array} - List of processed files
  */
-async function processVersionFiles(files, version) {
+async function processVersionFiles(files, version, options = {}) {
   const [major, minor, patch] = version.split('.');
   const processedFiles = [];
   
   console.log(`Starting version file processing for ${files.length} files with version ${version}`);
   console.log(`Parsed version parts: major=${major}, minor=${minor}, patch=${patch}`);
   
+  // Set up GitHub client if we're in a GitHub Action
+  let octokit = null;
+  let context = null;
+  let isGitHubAction = false;
+  
+  try {
+    const token = process.env.GITHUB_TOKEN || process.env.INPUT_TOKEN;
+    if (token) {
+      octokit = github.getOctokit(token);
+      context = github.context;
+      isGitHubAction = true;
+      console.log(`✨ GitHub API client initialized - we'll try to avoid conflicts by checking the release branch first 💅`);
+    }
+  } catch (e) {
+    console.log(`Not running in GitHub Actions or token not available: ${e.message}`);
+  }
+  
+  // Determine which branches to check for existing content
+  const releaseBranch = options.releaseBranch || 'release';
+  
   for (const file of files) {
     console.log(`\nProcessing version file: ${file}`);
     try {
-      // Verify file exists
-      try {
-        await fs.access(file);
-        console.log(`File exists!`);
-      } catch (err) {
-        console.error(`CRITICAL ERROR: File does not exist or cannot be accessed: ${file}`);
-        console.error(`Error details: ${err.message}`); 
-        continue; // Skip to next file
+      // Try to get content from GitHub API first to avoid conflicts
+      let content = null;
+      let contentSource = 'local';
+      
+      if (isGitHubAction) {
+        try {
+          console.log(`Trying to fetch ${file} from ${releaseBranch} branch first to avoid conflicts...`);
+          const { owner, repo } = context.repo;
+          const { data } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: file,
+            ref: releaseBranch
+          });
+          
+          content = Buffer.from(data.content, 'base64').toString('utf8');
+          contentSource = `${releaseBranch} branch`;
+          console.log(`✨ Successfully retrieved ${file} from ${releaseBranch} branch to avoid conflicts!`);
+        } catch (error) {
+          console.log(`Couldn't get ${file} from ${releaseBranch} branch: ${error.message}`);
+          console.log(`Will use local file instead...`);
+        }
       }
       
-      const content = await fs.readFile(file, 'utf8');
-      console.log(`File read successfully (${content.length} bytes)`); 
-      console.log(`Looking for version template markers...`);
+      // Fall back to local file if we couldn't get it from GitHub
+      if (!content) {
+        // Verify file exists locally
+        try {
+          await fs.access(file);
+          console.log(`Local file exists!`);
+        } catch (err) {
+          console.error(`CRITICAL ERROR: File does not exist or cannot be accessed: ${file}`);
+          console.error(`Error details: ${err.message}`); 
+          continue; // Skip to next file
+        }
+        
+        content = await fs.readFile(file, 'utf8');
+        console.log(`File read successfully from local filesystem (${content.length} bytes)`);
+      } else {
+        console.log(`Using content from ${contentSource} to avoid conflicts 💅`);
+      }
       
+      console.log(`Looking for version template markers...`);
       console.log(`File content preview (first 200 chars):\n${content.substring(0, 200)}...`);
       
       const lines = content.split('\n');

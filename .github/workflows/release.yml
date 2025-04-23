@@ -49,6 +49,7 @@ jobs:
         uses: ./
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: .release-boss.yml
           # No config-file specified - will auto-detect YAML first, then fall back to JSON
           # You can specify a path if you want to use a custom location:
           # config-file: .github/release-boss-config.yml

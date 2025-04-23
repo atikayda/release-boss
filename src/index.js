@@ -397,7 +397,11 @@ async function run() {
         core.info(`Processing ${config.versionFiles.length} version files:`);
         config.versionFiles.forEach(file => core.info(`  - ${file}`));
         
-        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion);
+        // Pass the release branch info to avoid conflicts
+        const processedVersionFiles = await processVersionFiles(config.versionFiles, newVersion, {
+          releaseBranch: config.releaseBranch
+        });
+        
         core.info(`\nSuccessfully processed ${processedVersionFiles.length} version files:`);
         processedVersionFiles.forEach(file => core.info(`  - ${file}`));
         updatedFiles.push(...processedVersionFiles);

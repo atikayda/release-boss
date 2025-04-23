@@ -3,13 +3,13 @@
  * It gets processed during releases to update the version number
  */
 
-const VERSION = '0.0.1';
-const VERSION_WITH_V = 'v0.0.1';
+const VERSION = '1.2.1';
+const VERSION_WITH_V = 'v1.2.1';
 
 module.exports = {
   VERSION,
   VERSION_WITH_V,
-  MAJOR: '0',
-  MINOR: '0',
+  MAJOR: '1',
+  MINOR: '2',
   PATCH: '1'
 };
