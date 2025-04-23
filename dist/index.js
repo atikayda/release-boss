@@ -65490,9 +65490,86 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
     }
   }
   
-  // Step 4: Update CHANGELOG.md in staging branch
+  // Step 4: Prepare changelog content (but don't commit it yet - we'll do a single commit with all files)
+  let changelogContent = null;
+  let changelogPath = null;
+  
   if (config.changelogPath) {
-    await updateChangelog(octokit, context, config.changelogPath, changelog, newVersion, stagingBranch, config.releaseBranch);
+    changelogPath = config.changelogPath;
+    console.log(`Preparing changelog for ${newVersion} (will be committed with other files)...`);
+    
+    // Get current content of the changelog from the first available source
+    let baseContent = '';
+    let sourceUsed = null;
+    
+    // ALWAYS try to get content from the release branch first to avoid conflicts
+    // This ensures we're building on top of what's already in the release branch
+    const sourceBranches = [];
+    
+    // First priority: specified release branch
+    if (config.releaseBranch) {
+      sourceBranches.push(config.releaseBranch);
+    }
+    
+    // Second priority: default release branch (usually 'release')
+    if (!config.releaseBranch || config.releaseBranch !== 'release') {
+      sourceBranches.push('release');
+    }
+    
+    // Last resort: the branch we're updating
+    if (stagingBranch !== 'release' && !sourceBranches.includes(stagingBranch)) {
+      sourceBranches.push(stagingBranch);
+    }
+    
+    console.log(`Will try to fetch changelog content from branches in this order: ${sourceBranches.join(', ')}`);
+    
+    for (const sourceRef of sourceBranches) {
+      try {
+        console.log(`Attempting to get changelog from ${sourceRef} branch...`);
+        const { data } = await octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: changelogPath,
+          ref: sourceRef
+        });
+        
+        // Decode content from base64
+        baseContent = Buffer.from(data.content, 'base64').toString('utf8');
+        sourceUsed = sourceRef;
+        console.log(`✨ Successfully retrieved base changelog from ${sourceRef} branch!`);
+        break; // We found content, no need to check other branches
+      } catch (error) {
+        if (error.status === 404) {
+          console.log(`Changelog file doesn't exist in ${sourceRef} branch, trying next source...`);
+        } else {
+          console.log(`Error getting changelog from ${sourceRef}, trying next source: ${error.message}`);
+        }
+      }
+    }
+    
+    if (!sourceUsed) {
+      console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
+    } else {
+      console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
+    }
+    
+    // Add new content at the top of the changelog
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    if (baseContent && baseContent.includes('# Changelog')) {
+      // Replace the header and add new content
+      const changelogStart = baseContent.indexOf('# Changelog');
+      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
+      
+      changelogContent = baseContent.substring(0, afterHeader) +
+        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
+        baseContent.substring(afterHeader);
+    } else {
+      // Create a new changelog
+      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
+    }
+    
+    console.log(`Prepared changelog content for ${newVersion} 📝`);
   }
   
   // Step 5: Commit updated version files to staging branch
@@ -65558,6 +65635,15 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       }
     }
     
+    // Add the changelog to the files to commit if we have it
+    if (changelogPath && changelogContent) {
+      filesToCommit.push({
+        path: changelogPath,
+        content: changelogContent
+      });
+      console.log(`Added changelog to batch commit: ${changelogPath}`);
+    }
+    
     // Commit all files in a single batch
     if (filesToCommit.length > 0) {
       try {
@@ -65565,10 +65651,10 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           octokit,
           context,
           filesToCommit,
-          `chore: update version files for release ${newVersion} 💅`,
+          `chore: update files for release ${newVersion}`,
           stagingBranch
         );
-        console.log(`Successfully committed ${filesToCommit.length} version files in a single commit! 💁‍♀️`);
+        console.log(`Successfully committed ${filesToCommit.length} files in a single fabulous commit! 💁‍♀️`);
       } catch (commitError) {
         console.error(`Error during batch commit operation: ${commitError.message}`);
         if (commitError.response) {
@@ -65700,26 +65786,113 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
   // Get the PR branch
   const prBranch = context.payload.pull_request.head.ref;
   
-  // Update the changelog on the PR branch
+  // Collect all files to commit in a single batch
+  const filesToCommit = [];
+  
+  // Prepare changelog content if needed
   if (config.changelogPath) {
-    await updateChangelog(octokit, context, config.changelogPath, changelog, newVersion, prBranch, config.releaseBranch);
+    console.log(`Preparing changelog for ${newVersion} in existing PR...`);
+    
+    // Get current content of the changelog from the first available source
+    let baseContent = '';
+    let sourceUsed = null;
+    
+    // ALWAYS try to get content from the release branch first to avoid conflicts
+    const sourceBranches = [config.releaseBranch, 'release', prBranch];
+    
+    console.log(`Will try to fetch changelog content from branches in this order: ${sourceBranches.join(', ')}`);
+    
+    for (const sourceRef of sourceBranches) {
+      try {
+        console.log(`Attempting to get changelog from ${sourceRef} branch...`);
+        const { data } = await octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: config.changelogPath,
+          ref: sourceRef
+        });
+        
+        // Decode content from base64
+        baseContent = Buffer.from(data.content, 'base64').toString('utf8');
+        sourceUsed = sourceRef;
+        console.log(`✨ Successfully retrieved base changelog from ${sourceRef} branch!`);
+        break; // We found content, no need to check other branches
+      } catch (error) {
+        if (error.status === 404) {
+          console.log(`Changelog file doesn't exist in ${sourceRef} branch, trying next source...`);
+        } else {
+          console.log(`Error getting changelog from ${sourceRef}, trying next source: ${error.message}`);
+        }
+      }
+    }
+    
+    // Add new content at the top of the changelog
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    let changelogContent;
+    
+    if (baseContent && baseContent.includes('# Changelog')) {
+      // Replace the header and add new content
+      const changelogStart = baseContent.indexOf('# Changelog');
+      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
+      
+      changelogContent = baseContent.substring(0, afterHeader) +
+        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
+        baseContent.substring(afterHeader);
+    } else {
+      // Create a new changelog
+      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
+    }
+    
+    // Add changelog to files to commit
+    filesToCommit.push({
+      path: config.changelogPath,
+      content: changelogContent
+    });
+    console.log(`Added changelog to batch commit: ${config.changelogPath}`);
   }
   
-  // Update version files in the PR branch
+  // Add version files to the batch
   if (updatedFiles && updatedFiles.length > 0) {
-    console.log(`Committing ${updatedFiles.length} updated version files to ${prBranch}...`);
+    console.log(`Processing ${updatedFiles.length} updated version files for batch commit...`);
     
     for (const file of updatedFiles) {
       try {
         const fileContent = await fs.readFile(file, 'utf8');
         const filePathInRepo = path.relative(process.cwd(), file);
         
-        await commitFileToStaging(octokit, context, filePathInRepo, fileContent, 
-          `chore: update version in ${path.basename(file)} for ${newVersion}`, prBranch);
+        if (filePathInRepo === '' || filePathInRepo.startsWith('..')) {
+          console.error(`Invalid file path: ${filePathInRepo}`);
+          continue;
+        }
+        
+        filesToCommit.push({
+          path: filePathInRepo,
+          content: fileContent
+        });
+        console.log(`Added ${filePathInRepo} to batch commit`);
       } catch (error) {
-        console.error(`Error committing file ${file} to ${prBranch}:`, error);
+        console.error(`Error processing file ${file} for commit: ${error.message}`);
       }
     }
+  }
+  
+  // Commit all files in a single batch
+  if (filesToCommit.length > 0) {
+    try {
+      await commitMultipleFilesToStaging(
+        octokit,
+        context,
+        filesToCommit,
+        `chore: update files for release ${newVersion}`,
+        prBranch
+      );
+      console.log(`Successfully committed ${filesToCommit.length} files in a single fabulous commit! 💁‍♀️`);
+    } catch (commitError) {
+      console.error(`Error during batch commit operation: ${commitError.message}`);
+      throw commitError;
+    }
+  } else {
+    console.log(`No files to commit in the PR`);
   }
   
   // Update the PR title and body
@@ -65772,104 +65945,8 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
   };
 }
 
-/**
- * Update the changelog in the staging branch
- * @param {Object} octokit - GitHub API client
- * @param {Object} context - GitHub context 
- * @param {String} changelogPath - Path to the changelog file 
- * @param {String} newChanges - New changelog content to add
- * @param {String} version - Version being released
- * @param {String} branch - Branch to update
- * @param {String} releaseBranch - Release branch name to ensure consistency
- */
-async function updateChangelog(octokit, context, changelogPath, newChanges, version, branch, releaseBranch = null) {
-  const { owner, repo } = context.repo;
-  
-  console.log(`Updating changelog for ${version} in ${branch}...`);
-  
-  // ALWAYS try to get content from the release branch first to avoid conflicts
-  // This ensures we're building on top of what's already in the release branch
-  const sourceBranches = [];
-  
-  // First priority: specified release branch
-  if (releaseBranch) {
-    sourceBranches.push(releaseBranch);
-  }
-  
-  // Second priority: default release branch (usually 'release')
-  if (!releaseBranch || releaseBranch !== 'release') {
-    sourceBranches.push('release');
-  }
-  
-  // Last resort: the branch we're updating
-  if (branch !== 'release' && !sourceBranches.includes(branch)) {
-    sourceBranches.push(branch);
-  }
-  
-  console.log(`Will try to fetch changelog content from branches in this order: ${sourceBranches.join(', ')}`);
-  
-  // Get current content of the changelog from the first available source
-  let baseContent = '';
-  let sourceUsed = null;
-  
-  for (const sourceRef of sourceBranches) {
-    try {
-      console.log(`Attempting to get changelog from ${sourceRef} branch...`);
-      const { data } = await octokit.rest.repos.getContent({
-        owner,
-        repo,
-        path: changelogPath,
-        ref: sourceRef
-      });
-      
-      // Decode content from base64
-      baseContent = Buffer.from(data.content, 'base64').toString('utf8');
-      sourceUsed = sourceRef;
-      console.log(`✨ Successfully retrieved base changelog from ${sourceRef} branch!`);
-      break; // We found content, no need to check other branches
-    } catch (error) {
-      if (error.status === 404) {
-        console.log(`Changelog file doesn't exist in ${sourceRef} branch, trying next source...`);
-      } else {
-        console.log(`Error getting changelog from ${sourceRef}, trying next source: ${error.message}`);
-      }
-    }
-  }
-  
-  if (!sourceUsed) {
-    console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
-  } else {
-    console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
-  }
-  
-  // Add new content at the top of the changelog
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-  let updatedContent;
-  
-  if (baseContent && baseContent.includes('# Changelog')) {
-    // Replace the header and add new content
-    const changelogStart = baseContent.indexOf('# Changelog');
-    const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
-    
-    updatedContent = baseContent.substring(0, afterHeader) +
-      `## ${version} (${today})\n\n${newChanges}\n\n` +
-      baseContent.substring(afterHeader);
-  } else {
-    // Create a new changelog
-    updatedContent = `# Changelog\n\n## ${version} (${today})\n\n${newChanges}\n`;
-  }
-  
-  // Commit the updated changelog to the branch using our batch commit function
-  await commitMultipleFilesToStaging(
-    octokit,
-    context,
-    [{ path: changelogPath, content: updatedContent }],
-    `chore: update changelog for ${version} 💅`,
-    branch
-  );
-  
-  console.log(`Updated changelog in ${branch} with a fabulous commit 📝✨`);
-}
+// The updateChangelog function has been integrated directly into createOrUpdatePR and updateExistingPR
+// for a more efficient single-commit approach
 
 /**
  * Commit a file to a branch
@@ -66158,7 +66235,6 @@ module.exports = {
   createOrUpdatePR,
   updateExistingPR,
   tagRelease,
-  updateChangelog,
   commitFileToStaging,
   commitMultipleFilesToStaging
 };
