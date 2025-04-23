@@ -8,6 +8,7 @@ const DEFAULT_CONFIG = {
   mergeBranch: 'main',
   stagingBranch: 'staging',
   releaseBranch: 'release',
+  deleteStagingBranch: true,  // By default, we'll clean up staging branches after PR closure
   pullRequestTitle: 'chore: release {version}',
   pullRequestHeader: 'Release PR',
   templateFiles: [],

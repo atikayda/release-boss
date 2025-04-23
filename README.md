@@ -77,6 +77,7 @@ Create a `.release-boss.yml` file in your repository root. YAML is more GitHub-f
 mergeBranch: main           # Branch to analyze commits from
 stagingBranch: staging      # Branch prefix for staging changes
 releaseBranch: release      # Branch to create PR against
+deleteStagingBranch: true   # Whether to delete staging branches after PR is merged/closed
 
 # PR Configuration
 pullRequestTitle: "chore: release ✨ {version} ✨"  # PR title template
@@ -120,6 +121,7 @@ If you prefer JSON, create a `.release-boss.json` file instead:
   "mergeBranch": "main",                   // Branch to analyze commits from
   "stagingBranch": "staging",               // Branch prefix for staging changes
   "releaseBranch": "release",               // Branch to create PR against
+  "deleteStagingBranch": true,              // Whether to delete staging branches after PR is merged/closed
   "pullRequestTitle": "chore: release ✨ {version} ✨", // PR title template
   "pullRequestHeader": "# 🎉 Release Time! 💃",     // Header text for PR description
   "templateFiles": [                       // Files containing whole-file templates
@@ -284,6 +286,7 @@ Release Boss follows a fabulous GitFlow-inspired approach to make your releases 
 3. **Version Magic**: After the merge, she updates version files and generates a stunning changelog based on what's in the staging branch
 4. **PR Creation**: A pull request is created from staging → release branch for your review
 5. **Tagging Time**: When you merge the PR, she automatically creates version tags with optional major/minor aliases
+6. **Cleanup**: After the PR is merged or closed, she'll tidy up by deleting the staging branch (configurable)
 
 This GitFlow-based approach gives you:
 - 💎 Cleaner merge history

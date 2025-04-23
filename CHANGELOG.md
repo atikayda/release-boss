@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.3 (2025-04-23)
+
+## [1.4.3](https://github.com/atikayda/release-boss/compare/v1.4.2...v1.4.3) (2025-04-23)
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* add ability to cleanup staging branch on close as well as on merge ([097e4ef](https://github.com/atikayda/release-boss/commit/097e4ef581e0ec33dd8b8851cac6f19c5529ebbe))
+
+
+
 ## 1.4.2 (2025-04-23)
 
 ## [1.4.2](https://github.com/atikayda/release-boss/compare/v1.4.1...v1.4.2) (2025-04-23)

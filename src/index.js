@@ -87,6 +87,25 @@ async function run() {
       const headBranch = context.payload.pull_request.head.ref;
       core.info(`PR was merged from branch: ${headBranch}`);
       
+      // Delete the staging branch after merge if configured to do so
+      startGroup('💋 Branch Cleanup - Keeping things tidy! 💅');
+      if (config.deleteStagingBranch) {
+        try {
+          const { deleteBranch } = require('./github/prManager');
+          const branchDeleted = await deleteBranch(octokit, context, headBranch);
+          if (branchDeleted) {
+            core.info(`Successfully deleted branch ${headBranch} after merge - keeping our repo fabulous! ✨`);
+          } else {
+            core.info(`Branch ${headBranch} was not deleted - it might have been deleted already or there was an issue.`);
+          }
+        } catch (error) {
+          core.warning(`Failed to delete branch ${headBranch}: ${error.message}`);
+        }
+      } else {
+        core.info(`Branch deletion is disabled in config (deleteStagingBranch: false) - keeping ${headBranch} around for posterity 💅`);
+      }
+      endGroup();
+      
       // Check if this is a staging branch merge (our release PR pattern)
       if (headBranch.startsWith(`${config.stagingBranch}-`)) {
         core.info(`This PR is from a staging branch! That's our release pattern, honey! 💅`);
@@ -500,16 +519,36 @@ async function run() {
             core.warning(`PR #${prNumber} was closed unexpectedly - this may indicate staging branch has no differences from target`);
             prStatus = 'closed';
             
-            // Check branch existence to provide better diagnostics
+            // Check branch existence and delete it if it exists
+            const stagingBranch = `${config.stagingBranch}-v${newVersion}`;
             try {
               await octokit.rest.repos.getBranch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                branch: `${config.stagingBranch}-v${newVersion}`
+                branch: stagingBranch
               });
-              core.info(`Staging branch ${config.stagingBranch}-v${newVersion} still exists - this confirms PR was closed due to lack of changes`);
+              core.info(`Staging branch ${stagingBranch} still exists - this confirms PR was closed due to lack of changes`);
+              
+              // Delete the staging branch since the PR was closed (if configured to do so)
+              startGroup('💋 Branch Cleanup - Cleaning up after closed PR! 💅');
+              if (config.deleteStagingBranch) {
+                try {
+                  const { deleteBranch } = require('./github/prManager');
+                  const branchDeleted = await deleteBranch(octokit, context, stagingBranch);
+                  if (branchDeleted) {
+                    core.info(`Successfully deleted branch ${stagingBranch} after PR was closed - keeping our repo fabulous! ✨`);
+                  } else {
+                    core.info(`Branch ${stagingBranch} was not deleted - there might have been an issue.`);
+                  }
+                } catch (error) {
+                  core.warning(`Failed to delete branch ${stagingBranch}: ${error.message}`);
+                }
+              } else {
+                core.info(`Branch deletion is disabled in config (deleteStagingBranch: false) - keeping ${stagingBranch} around for posterity 💅`);
+              }
+              endGroup();
             } catch (e) {
-              core.warning(`Staging branch ${config.stagingBranch}-v${newVersion} seems to be gone - this may indicate other issues`);
+              core.warning(`Staging branch ${stagingBranch} seems to be gone already - this may indicate other issues`);
             }
           }
         } catch (e) {
