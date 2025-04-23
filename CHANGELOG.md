@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0 (2025-04-23)
+
+## [1.4.0](https://github.com/atikayda/release-boss/compare/v1.3.1...v1.4.0) (2025-04-23)
+
+### ✨ Fabulous New Features ✨
+
+* add fabulous updateFiles feature for line-based search and replace 💅 ([5771af9](https://github.com/atikayda/release-boss/commit/5771af90539e11afe05c67a1f61855e459af3d92))
+
+
+
 ## 1.3.1 (2025-04-23)
 
 ## [1.3.1](https://github.com/atikayda/release-boss/compare/v1.3.0...v1.3.1) (2025-04-23)
