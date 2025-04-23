@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 (2025-04-23)
+
+## [1.3.0](https://github.com/atikayda/release-boss/compare/v1.2.1...v1.3.0) (2025-04-23)
+
+### ✨ Fabulous New Features ✨
+
+* add smart conflict resolution strategy for merge conflicts ([c163e15](https://github.com/atikayda/release-boss/commit/c163e154c729520e455fee978761bfbb47d62c73))
+
+
+
 ## 1.2.1 (2025-04-23)
 
 ## [1.2.1](https://github.com/atikayda/release-boss/compare/v1.2.0...v1.2.1) (2025-04-23)
