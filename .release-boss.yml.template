@@ -35,6 +35,20 @@ templateFiles: []
   #   template: src/version.js
   #   output: src/version.js
 
+# Update Files
+# ------------
+# Files that need line-based search and replace for version updates
+# Great for files where you can't add template markers!
+updateFiles: []
+  # Example:
+  # - file: src/version.go
+  #   findLine: "const Version = "
+  #   replaceLine: "const Version = \"v{{version}}\""
+  # 
+  # - file: package.json
+  #   findLine: "  \"version\": "
+  #   replaceLine: "  \"version\": \"{{version}}\","
+
 # Changelog Configuration
 # ---------------------
 # How to generate and format the changelog

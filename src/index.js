@@ -7,7 +7,7 @@ const { findBumpCommandsInPR, applyBumpCommand } = require('./github/findBumpCom
 
 const { analyzeCommits, determineVersionBump } = require('./core/commitAnalyzer');
 const { generateChangelog } = require('./core/changelogGenerator');
-const { processVersionFiles, processTemplateFiles } = require('./core/templateProcessor');
+const { processVersionFiles, processTemplateFiles, processUpdateFiles } = require('./core/templateProcessor');
 const { createOrUpdatePR, tagRelease } = require('./github/prManager');
 
 /**
@@ -52,8 +52,8 @@ function extractVersionFromStagingBranch(branchName, stagingPrefix) {
 async function run() {
   try {
     // Log the Release Boss version at startup
-    const packageJson = require('../package.json');
-    core.info(`💅 Release Boss v${packageJson.version} is ready to slay! 💁‍♀️✨`);
+    const { VERSION_WITH_V } = require('./version');
+    core.info(`💅 Release Boss ${VERSION_WITH_V} is ready to slay! 💁‍♀️✨`);
     
     // Get inputs
     const token = core.getInput('token', { required: true });
@@ -423,6 +423,22 @@ async function run() {
         updatedFiles.push(...generatedTemplateFiles);
       } else {
         core.info('No template files to process');
+      }
+      
+      if (config.updateFiles && config.updateFiles.length > 0) {
+        core.info(`\nProcessing ${config.updateFiles.length} update files:`);
+        config.updateFiles.forEach(file => core.info(`  - ${file.file} (find: '${file.findLine.substring(0, 30)}${file.findLine.length > 30 ? '...' : ''}')`));
+        
+        // Pass the release branch info to avoid conflicts
+        const processedUpdateFiles = await processUpdateFiles(config.updateFiles, newVersion, {
+          releaseBranch: config.releaseBranch
+        });
+        
+        core.info(`\nSuccessfully processed ${processedUpdateFiles.length} update files:`);
+        processedUpdateFiles.forEach(file => core.info(`  - ${file}`));
+        updatedFiles.push(...processedUpdateFiles);
+      } else {
+        core.info('No update files to process');
       }
     } catch (error) {
       core.error(`Error processing templates: ${error.message}`);
