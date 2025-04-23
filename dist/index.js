@@ -65071,8 +65071,127 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       
       console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
     } catch (error) {
-      console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${error.message}`);
-      throw error;
+      // If there's a merge conflict, let's handle it gracefully
+      if (error.message.includes('Merge conflict')) {
+        console.log(`Merge conflict detected when merging ${config.mergeBranch} into ${stagingBranch}. Let's resolve it! 💪`);
+        
+        // We'll handle this by cherry-picking changes from main that don't conflict with version/changelog files
+        // First, get the list of files that have changed in main since the release branch diverged
+        console.log(`Getting list of files changed in ${config.mergeBranch} since ${config.releaseBranch} diverged...`);
+        
+        try {
+          // First, let's get the list of version and changelog files that we want to preserve from release branch
+          const preserveFiles = [];
+          
+          // Add changelog file if configured
+          if (config.changelogPath) {
+            preserveFiles.push(config.changelogPath);
+          }
+          
+          // Add version files if configured
+          if (config.versionFiles && Array.isArray(config.versionFiles)) {
+            preserveFiles.push(...config.versionFiles);
+          }
+          
+          console.log(`Files to preserve from ${config.releaseBranch}: ${preserveFiles.join(', ')}`);
+          
+          // Reset the staging branch to match release branch exactly
+          await octokit.rest.git.updateRef({
+            owner,
+            repo,
+            ref: `heads/${stagingBranch}`,
+            sha: releaseBranchSha,
+            force: true
+          });
+          
+          console.log(`Reset ${stagingBranch} to match ${config.releaseBranch} exactly`);
+          
+          // For each file in preserveFiles, ensure we have the content from release branch
+          for (const filePath of preserveFiles) {
+            try {
+              // Get file content from release branch
+              const { data: fileContent } = await octokit.rest.repos.getContent({
+                owner,
+                repo,
+                path: filePath,
+                ref: config.releaseBranch
+              });
+              
+              // If file exists, ensure it's preserved in staging branch
+              if (fileContent) {
+                const content = Buffer.from(fileContent.content, 'base64').toString();
+                await commitFileToStaging(
+                  octokit, 
+                  context, 
+                  filePath, 
+                  content, 
+                  `chore: preserve ${filePath} from ${config.releaseBranch} for release ${newVersion}`,
+                  stagingBranch
+                );
+                console.log(`Preserved ${filePath} from ${config.releaseBranch} in ${stagingBranch}`);
+              }
+            } catch (fileError) {
+              // If file doesn't exist in release branch, that's fine
+              if (fileError.status !== 404) {
+                console.warn(`Warning: Could not preserve ${filePath} from ${config.releaseBranch}: ${fileError.message}`);
+              }
+            }
+          }
+          
+          // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
+          // We'll do this by getting the content of each file in main and committing it to staging
+          // if it's not in the preserveFiles list
+          
+          // Get the list of files in main branch
+          const { data: mainFiles } = await octokit.rest.git.getTree({
+            owner,
+            repo,
+            tree_sha: mergeBranchSha,
+            recursive: 1
+          });
+          
+          // For each file in main, if it's not in preserveFiles, copy it to staging
+          for (const file of mainFiles.tree) {
+            if (file.type === 'blob' && !preserveFiles.includes(file.path)) {
+              try {
+                // Get file content from main branch
+                const { data: fileContent } = await octokit.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: file.path,
+                  ref: config.mergeBranch
+                });
+                
+                // If file exists, copy it to staging branch
+                if (fileContent && fileContent.content) {
+                  const content = Buffer.from(fileContent.content, 'base64').toString();
+                  await commitFileToStaging(
+                    octokit, 
+                    context, 
+                    file.path, 
+                    content, 
+                    `chore: update ${file.path} from ${config.mergeBranch} for release ${newVersion}`,
+                    stagingBranch
+                  );
+                  console.log(`Updated ${file.path} from ${config.mergeBranch} in ${stagingBranch}`);
+                }
+              } catch (fileError) {
+                // If we can't get the file content, that's okay - just skip it
+                console.warn(`Warning: Could not update ${file.path} from ${config.mergeBranch}: ${fileError.message}`);
+              }
+            }
+          }
+          
+          console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
+        } catch (resolveError) {
+          console.error(`Error resolving merge conflicts: ${resolveError.message}`);
+          throw new Error(`Failed to resolve merge conflicts: ${resolveError.message}`);
+        }
+      } else {
+        // If it's not a merge conflict, rethrow the error
+        console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${error.message}`);
+        throw error;
+      }
     }
   } else {
     // For existing branches, we want to recreate the PR changes based on the latest release branch
