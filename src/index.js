@@ -51,6 +51,10 @@ function extractVersionFromStagingBranch(branchName, stagingPrefix) {
 
 async function run() {
   try {
+    // Log the Release Boss version at startup
+    const packageJson = require('../package.json');
+    core.info(`💅 Release Boss v${packageJson.version} is ready to slay! 💁‍♀️✨`);
+    
     // Get inputs
     const token = core.getInput('token', { required: true });
     const configFilePath = core.getInput('config-file', { required: false });
