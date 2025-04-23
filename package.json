@@ -1,6 +1,6 @@
 {
   "name": "release-boss",
-  "version": "0.1.0",
+  "version": "{version}",
   "description": "A fabulous GitHub Action for release management - she commits, she conquers, she releases!",
   "main": "dist/index.js",
   "scripts": {
