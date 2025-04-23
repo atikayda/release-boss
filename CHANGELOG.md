@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.2 (2025-04-23)
+
+## [1.4.2](https://github.com/atikayda/release-boss/compare/v1.4.1...v1.4.2) (2025-04-23)
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* single commit for merge too ([9951064](https://github.com/atikayda/release-boss/commit/9951064a88429394a94b1453d61866910dab9fc6))
+* update merges to use conventional commit merge messages ([09dd3a4](https://github.com/atikayda/release-boss/commit/09dd3a4a5c208468e95226a203d754d976297805))
+
+
+
 ## 1.4.1 (2025-04-23)
 
 ## [1.4.1](https://github.com/atikayda/release-boss/compare/v1.4.0...v1.4.1) (2025-04-23)
