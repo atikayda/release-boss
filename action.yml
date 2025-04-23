@@ -12,9 +12,8 @@ inputs:
     required: true
     default: ${{ github.token }}
   config-file:
-    description: 'Path to Release Boss config file'
+    description: 'Path to Release Boss config file (will auto-detect .release-boss.yml first, then .release-boss.json if not specified)'
     required: false
-    default: '.release-boss.json'
 
 outputs:
   run_type:
