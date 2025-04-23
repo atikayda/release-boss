@@ -65330,145 +65330,131 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       }
     }
   } else {
-    // For existing branches, we want to recreate the PR changes based on the latest release branch
-    // to avoid conflicts, especially with the changelog
-    console.log(`Updating staging branch ${stagingBranch} using merge commit approach...`);
+    // For existing branches, we'll reset them to the release branch and start fresh
+    // This is simpler and more consistent than trying to update them in place
+    console.log(`Existing staging branch ${stagingBranch} found - resetting to ${config.releaseBranch} and starting fresh 💅`);
     
     try {
-      // Try a simple merge first
-      console.log(`Attempting to merge ${config.mergeBranch} into ${stagingBranch}...`);
+      // Force update the staging branch ref to match release branch
+      await octokit.rest.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${stagingBranch}`,
+        sha: releaseBranchSha,
+        force: true
+      });
       
+      console.log(`Reset ${stagingBranch} to match ${config.releaseBranch} exactly`);
+      
+      // Now merge the main branch into the staging branch
+      console.log(`Merging ${config.mergeBranch} into reset staging branch...`);
       try {
         const { data: mergeCommit } = await octokit.rest.repos.merge({
           owner,
           repo,
-          base: stagingBranch,           // The branch we want to update
+          base: stagingBranch,           // The staging branch we just reset
           head: mergeBranchSha,         // The SHA of the main branch to include changes from
           commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
         });
         
-        console.log(`Successfully updated staging branch with merge commit ${mergeCommit.sha.substring(0, 7)} 💃`);
-      } catch (mergeError) {
-        // If merge fails due to conflicts, use our smart conflict resolution strategy
-        if (mergeError.message.includes('Merge conflict')) {
-          console.log(`Merge conflict detected when updating ${stagingBranch}. Let's resolve it with our fabulous conflict resolution strategy! 💅`);
+        console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
+      } catch (error) {
+        // If there's a merge conflict, let's handle it gracefully
+        if (error.message.includes('Merge conflict')) {
+          console.log(`Merge conflict detected when merging ${config.mergeBranch} into ${stagingBranch}. Let's resolve it! 💪`);
           
-          // First, let's get the list of version and changelog files that we want to preserve from release branch
-          const preserveFiles = [];
+          // We'll handle this by cherry-picking changes from main that don't conflict with version/changelog files
+          // First, get the list of files that have changed in main since the release branch diverged
+          console.log(`Getting list of files changed in ${config.mergeBranch} since ${config.releaseBranch} diverged...`);
           
-          // Add changelog file if configured
-          if (config.changelogPath) {
-            preserveFiles.push(config.changelogPath);
-          }
-          
-          // Add version files if configured
-          if (config.versionFiles && Array.isArray(config.versionFiles)) {
-            preserveFiles.push(...config.versionFiles);
-          }
-          
-          // Add update files if configured (just the file paths)
-          if (config.updateFiles && Array.isArray(config.updateFiles)) {
-            for (const updateFile of config.updateFiles) {
-              if (updateFile.file && !preserveFiles.includes(updateFile.file)) {
-                preserveFiles.push(updateFile.file);
-              }
+          try {
+            // First, let's get the list of version and changelog files that we want to preserve from release branch
+            const preserveFiles = [];
+            
+            // Add changelog file if configured
+            if (config.changelogPath) {
+              preserveFiles.push(config.changelogPath);
             }
-          }
-          
-          console.log(`Files to preserve from ${config.releaseBranch}: ${preserveFiles.join(', ')}`);
-          
-          // Reset the staging branch to match release branch exactly
-          await octokit.rest.git.updateRef({
-            owner,
-            repo,
-            ref: `heads/${stagingBranch}`,
-            sha: releaseBranchSha,
-            force: true
-          });
-          
-          console.log(`Reset ${stagingBranch} to match ${config.releaseBranch} exactly`);
-          
-          // For each file in preserveFiles, ensure we have the content from release branch
-          for (const filePath of preserveFiles) {
-            try {
-              // Get file content from release branch
-              const { data: fileContent } = await octokit.rest.repos.getContent({
-                owner,
-                repo,
-                path: filePath,
-                ref: config.releaseBranch
-              });
-              
-              // If file exists, ensure it's preserved in staging branch
-              if (fileContent) {
-                const content = Buffer.from(fileContent.content, 'base64').toString();
-                await commitFileToStaging(
-                  octokit, 
-                  context, 
-                  filePath, 
-                  content, 
-                  `chore: preserve ${filePath} from ${config.releaseBranch} for release ${newVersion}`,
-                  stagingBranch
-                );
-                console.log(`Preserved ${filePath} from ${config.releaseBranch} in ${stagingBranch}`);
-              }
-            } catch (fileError) {
-              // If file doesn't exist in release branch, that's fine
-              if (fileError.status !== 404) {
-                console.warn(`Warning: Could not preserve ${filePath} from ${config.releaseBranch}: ${fileError.message}`);
-              }
+            
+            // Add version files if configured
+            if (config.versionFiles && Array.isArray(config.versionFiles)) {
+              preserveFiles.push(...config.versionFiles);
             }
-          }
-          
-          // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
-          // We'll do this by getting the content of each file in main and committing it to staging
-          // if it's not in the preserveFiles list
-          
-          // Get the list of files in main branch
-          const { data: mainFiles } = await octokit.rest.git.getTree({
-            owner,
-            repo,
-            tree_sha: mergeBranchSha,
-            recursive: 1
-          });
-          
-          // For each file in main, if it's not in preserveFiles, copy it to staging
-          for (const file of mainFiles.tree) {
-            if (file.type === 'blob' && !preserveFiles.includes(file.path)) {
-              try {
-                // Get file content from main branch
-                const { data: fileContent } = await octokit.rest.repos.getContent({
-                  owner,
-                  repo,
-                  path: file.path,
-                  ref: config.mergeBranch
-                });
-                
-                // If file exists, copy it to staging branch
-                if (fileContent && fileContent.content) {
-                  const content = Buffer.from(fileContent.content, 'base64').toString();
-                  await commitFileToStaging(
-                    octokit, 
-                    context, 
-                    file.path, 
-                    content, 
-                    `chore: update ${file.path} from ${config.mergeBranch} for release ${newVersion}`,
-                    stagingBranch
-                  );
-                  console.log(`Updated ${file.path} from ${config.mergeBranch} in ${stagingBranch}`);
+            
+            // Add update files if configured (just the file paths)
+            if (config.updateFiles && Array.isArray(config.updateFiles)) {
+              for (const updateFile of config.updateFiles) {
+                if (updateFile.file && !preserveFiles.includes(updateFile.file)) {
+                  preserveFiles.push(updateFile.file);
                 }
-              } catch (fileError) {
-                // If we can't get the file content, that's okay - just skip it
-                console.warn(`Warning: Could not update ${file.path} from ${config.mergeBranch}: ${fileError.message}`);
               }
             }
+            
+            console.log(`Files to preserve from ${config.releaseBranch}: ${preserveFiles.join(', ')}`);
+            
+            // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
+            // We'll do this by getting the content of each file in main and committing it to staging
+            // if it's not in the preserveFiles list
+            
+            // Get the list of files in main branch
+            const { data: mainFiles } = await octokit.rest.git.getTree({
+              owner,
+              repo,
+              tree_sha: mergeBranchSha,
+              recursive: 1
+            });
+            
+            // Collect all files to update from main branch
+            const filesToUpdate = [];
+            
+            // For each file in main, if it's not in preserveFiles, collect it for a batch update
+            for (const file of mainFiles.tree) {
+              if (file.type === 'blob' && !preserveFiles.includes(file.path)) {
+                try {
+                  // Get file content from main branch
+                  const { data: fileContent } = await octokit.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path: file.path,
+                    ref: config.mergeBranch
+                  });
+                  
+                  // If file exists, add it to our collection
+                  if (fileContent && fileContent.content) {
+                    const content = Buffer.from(fileContent.content, 'base64').toString();
+                    filesToUpdate.push({
+                      path: file.path,
+                      content: content
+                    });
+                  }
+                } catch (fileError) {
+                  // If we can't get the file content, that's okay - just skip it
+                  console.warn(`Warning: Could not update ${file.path} from ${config.mergeBranch}: ${fileError.message}`);
+                }
+              }
+            }
+            
+            // Commit all files from main branch in a single commit
+            if (filesToUpdate.length > 0) {
+              await commitMultipleFilesToStaging(
+                octokit,
+                context,
+                filesToUpdate,
+                `chore: update files from ${config.mergeBranch} for release ${newVersion}`,
+                stagingBranch
+              );
+              console.log(`Updated ${filesToUpdate.length} files from ${config.mergeBranch} in a single commit 💅`);
+            }
+            
+            console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
+          } catch (resolveError) {
+            console.error(`Error resolving merge conflicts: ${resolveError.message}`);
+            throw new Error(`Failed to resolve merge conflicts: ${resolveError.message}`);
           }
-          
-          console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
         } else {
           // If it's not a merge conflict, rethrow the error
-          console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${mergeError.message}`);
-          throw mergeError;
+          console.error(`Error merging ${config.mergeBranch} into ${stagingBranch}: ${error.message}`);
+          throw error;
         }
       }
       
@@ -65533,6 +65519,9 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
     
     console.log(`Starting to commit files to ${stagingBranch}...`);
     
+    // Collect all files to commit in a single batch
+    const filesToCommit = [];
+    
     for (const file of updatedFiles) {
       try {
         console.log(`\nProcessing file for commit: ${file}`);
@@ -65557,23 +65546,38 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           continue;
         }
         
-        // Commit the file
-        console.log(`  Committing to staging branch with message: chore: update version in ${path.basename(file)} for ${newVersion}`);
-        try {
-          await commitFileToStaging(octokit, context, filePathInRepo, fileContent, 
-            `chore: update version in ${path.basename(file)} for ${newVersion}`, stagingBranch);
-          console.log(`  Successfully committed ${filePathInRepo} to ${stagingBranch}!`);
-        } catch (commitError) {
-          console.error(`  Error during commit operation: ${commitError.message}`);
-          if (commitError.response) {
-            console.error(`  API Response: ${JSON.stringify(commitError.response.data)}`);
-          }
-          throw commitError;
-        }
+        // Add the file to our collection
+        filesToCommit.push({
+          path: filePathInRepo,
+          content: fileContent
+        });
+        console.log(`  Added ${filePathInRepo} to batch commit`);
       } catch (error) {
-        console.error(`  Failed to commit file ${file} to ${stagingBranch}: ${error.message}`);
+        console.error(`  Failed to process file ${file} for commit: ${error.message}`);
         console.error(`  Error stack: ${error.stack}`);
       }
+    }
+    
+    // Commit all files in a single batch
+    if (filesToCommit.length > 0) {
+      try {
+        await commitMultipleFilesToStaging(
+          octokit,
+          context,
+          filesToCommit,
+          `chore: update version files for release ${newVersion} 💅`,
+          stagingBranch
+        );
+        console.log(`Successfully committed ${filesToCommit.length} version files in a single commit! 💁‍♀️`);
+      } catch (commitError) {
+        console.error(`Error during batch commit operation: ${commitError.message}`);
+        if (commitError.response) {
+          console.error(`API Response: ${JSON.stringify(commitError.response.data)}`);
+        }
+        throw commitError;
+      }
+    } else {
+      console.log(`No files to commit`);
     }
   }
   
@@ -65855,11 +65859,16 @@ async function updateChangelog(octokit, context, changelogPath, newChanges, vers
     updatedContent = `# Changelog\n\n## ${version} (${today})\n\n${newChanges}\n`;
   }
   
-  // Commit the updated changelog to the branch
-  await commitFileToStaging(octokit, context, changelogPath, updatedContent, 
-    `chore: update changelog for ${version}`, branch);
+  // Commit the updated changelog to the branch using our batch commit function
+  await commitMultipleFilesToStaging(
+    octokit,
+    context,
+    [{ path: changelogPath, content: updatedContent }],
+    `chore: update changelog for ${version} 💅`,
+    branch
+  );
   
-  console.log(`Updated changelog in ${branch} 📝`);
+  console.log(`Updated changelog in ${branch} with a fabulous commit 📝✨`);
 }
 
 /**
@@ -66064,12 +66073,94 @@ async function tagRelease(octokit, context, version, config) {
   };
 }
 
+/**
+ * Commit multiple files to a branch in a single commit
+ * @param {Object} octokit - GitHub API client
+ * @param {Object} context - GitHub context
+ * @param {Array} files - Array of {path, content} objects
+ * @param {String} message - Commit message
+ * @param {String} branch - Branch to commit to
+ */
+async function commitMultipleFilesToStaging(octokit, context, files, message, branch) {
+  if (!files || !Array.isArray(files) || files.length === 0) {
+    console.log('No files to commit');
+    return;
+  }
+
+  const { owner, repo } = context.repo;
+  console.log(`Committing ${files.length} files to branch ${branch} in a single commit...`);
+  
+  // Get the current commit SHA to use as the base
+  const { data: refData } = await octokit.rest.git.getRef({
+    owner,
+    repo,
+    ref: `heads/${branch}`
+  });
+  
+  const baseTreeSha = refData.object.sha;
+  
+  // Get the base tree
+  const { data: commitData } = await octokit.rest.git.getCommit({
+    owner,
+    repo,
+    commit_sha: baseTreeSha
+  });
+  
+  const baseTree = commitData.tree.sha;
+  
+  // Create blobs for each file
+  const fileBlobs = await Promise.all(files.map(async (file) => {
+    const { data: blobData } = await octokit.rest.git.createBlob({
+      owner,
+      repo,
+      content: Buffer.from(file.content).toString('base64'),
+      encoding: 'base64'
+    });
+    
+    return {
+      path: file.path,
+      mode: '100644', // Regular file
+      type: 'blob',
+      sha: blobData.sha
+    };
+  }));
+  
+  // Create a new tree with the new blobs
+  const { data: newTree } = await octokit.rest.git.createTree({
+    owner,
+    repo,
+    base_tree: baseTree,
+    tree: fileBlobs
+  });
+  
+  // Create a commit with the new tree
+  const { data: newCommit } = await octokit.rest.git.createCommit({
+    owner,
+    repo,
+    message,
+    tree: newTree.sha,
+    parents: [baseTreeSha]
+  });
+  
+  // Update the branch reference to point to the new commit
+  await octokit.rest.git.updateRef({
+    owner,
+    repo,
+    ref: `heads/${branch}`,
+    sha: newCommit.sha
+  });
+  
+  console.log(`Successfully committed ${files.length} files to ${branch} in a single commit! 💅`);
+  console.log(`Files: ${files.map(f => f.path).join(', ')}`);
+}
+
 module.exports = {
   createOrUpdatePR,
   updateExistingPR,
   tagRelease,
   updateChangelog,
-  commitFileToStaging
+  commitFileToStaging,
+  commitMultipleFilesToStaging
 };
 
 
