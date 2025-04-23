@@ -86,7 +86,7 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
         repo,
         base: stagingBranch,           // The staging branch we just created
         head: mergeBranchSha,         // The SHA of the main branch to include changes from
-        commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
+        commit_message: `chore: merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
       });
       
       console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
@@ -282,7 +282,7 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           repo,
           base: stagingBranch,           // The staging branch we just reset
           head: mergeBranchSha,         // The SHA of the main branch to include changes from
-          commit_message: `Merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
+          commit_message: `chore: merge ${config.mergeBranch} into ${stagingBranch} for release ${newVersion}`
         });
         
         console.log(`Successfully merged ${config.mergeBranch} into ${stagingBranch} with commit ${mergeCommit.sha.substring(0, 7)} 💃`);
