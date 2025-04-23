@@ -7,6 +7,8 @@
 ### 🛠️ Bug Fixes & Polish 💅
 
 * make default config detection work as advertised 📺 ([ddde872](https://github.com/atikayda/release-boss/commit/ddde872a5a6fcb84c4093d2bc3a73fc771088a2a))
+* make the default flow gitflow-like ([8522041](https://github.com/atikayda/release-boss/commit/85220415cf2d8c14337ef330cba39a86567c89a3))
+* add missing @octokit/rest dependency for GitHub API access ([3c2baa0](https://github.com/atikayda/release-boss/commit/3c2baa0263849c22f3bf6bdb6e3a2b5e10cf03f7))
 
 ### 📝 Documentation Glow-Ups 📚
 
