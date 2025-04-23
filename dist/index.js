@@ -66122,15 +66122,15 @@ module.exports = {
  * It gets processed during releases to update the version number
  */
 
-const VERSION = '1.3.1';
-const VERSION_WITH_V = 'v1.3.1';
+const VERSION = '1.4.0';
+const VERSION_WITH_V = 'v1.4.0';
 
 module.exports = {
   VERSION,
   VERSION_WITH_V,
   MAJOR: '1',
-  MINOR: '3',
-  PATCH: '1'
+  MINOR: '4',
+  PATCH: '0'
 };
 
 
