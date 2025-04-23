@@ -8,6 +8,7 @@
 mergeBranch: main        # Branch where changes are merged (usually 'main' or 'master')
 stagingBranch: staging   # Prefix for staging branches (e.g., 'staging-v1.0.0')
 releaseBranch: release   # Branch where releases are created
+deleteStagingBranch: true # Whether to delete staging branches after PR is merged or closed
 
 # PR Configuration
 # ---------------
