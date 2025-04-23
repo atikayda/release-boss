@@ -343,7 +343,143 @@ function renderTemplate(template, version, major, minor, patch) {
     .replace(/\{\{patch\}\}/g, patch);
 }
 
+/**
+ * Process files with line-based search and replace
+ * @param {Array} files - List of update file configurations
+ * @param {String} version - New version to inject
+ * @param {Object} options - Additional options
+ * @param {String} options.releaseBranch - Release branch to check for existing content
+ * @returns {Array} - List of processed files
+ */
+async function processUpdateFiles(files, version, options = {}) {
+  if (!files || !Array.isArray(files) || files.length === 0) {
+    console.log('No update files to process');
+    return [];
+  }
+
+  const [major, minor, patch] = version.split('.');
+  const processedFiles = [];
+  
+  console.log(`Starting update file processing for ${files.length} files with version ${version}`);
+  console.log(`Parsed version parts: major=${major}, minor=${minor}, patch=${patch}`);
+  
+  // Set up GitHub client if we're in a GitHub Action
+  let octokit = null;
+  let context = null;
+  let isGitHubAction = false;
+  
+  try {
+    const token = process.env.GITHUB_TOKEN || process.env.INPUT_TOKEN;
+    if (token) {
+      octokit = github.getOctokit(token);
+      context = github.context;
+      isGitHubAction = true;
+      console.log(`✨ GitHub API client initialized - we'll try to avoid conflicts by checking the release branch first 💅`);
+    }
+  } catch (e) {
+    console.log(`Not running in GitHub Actions or token not available: ${e.message}`);
+  }
+  
+  // Determine which branches to check for existing content
+  const releaseBranch = options.releaseBranch || 'release';
+  
+  for (const fileConfig of files) {
+    if (!fileConfig.file || !fileConfig.findLine || !fileConfig.replaceLine) {
+      console.log(`Skipping invalid update file config: ${JSON.stringify(fileConfig)}`);
+      continue;
+    }
+    
+    const filePath = fileConfig.file;
+    console.log(`\nProcessing update file: ${filePath}`);
+    
+    try {
+      // Try to get content from GitHub API first to avoid conflicts
+      let content = null;
+      let contentSource = 'local';
+      
+      if (isGitHubAction) {
+        try {
+          console.log(`Trying to fetch ${filePath} from ${releaseBranch} branch first to avoid conflicts...`);
+          const { data: fileData } = await octokit.rest.repos.getContent({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            path: filePath,
+            ref: releaseBranch
+          });
+          
+          if (fileData && fileData.content) {
+            content = Buffer.from(fileData.content, 'base64').toString('utf8');
+            contentSource = 'github';
+            console.log(`Successfully fetched content from GitHub API (${releaseBranch} branch) 💅`);
+          }
+        } catch (error) {
+          console.log(`Couldn't fetch from GitHub API: ${error.message}. Will try local file instead.`);
+        }
+      }
+      
+      // Fall back to local file if GitHub API didn't work
+      if (!content) {
+        try {
+          content = await fs.readFile(filePath, 'utf8');
+          contentSource = 'local';
+          console.log(`Read file content from local filesystem`);
+        } catch (error) {
+          if (error.code === 'ENOENT') {
+            console.log(`File doesn't exist locally, will create it`);
+            content = '';
+          } else {
+            throw error;
+          }
+        }
+      }
+      
+      // Process the file content by searching for the line and replacing it
+      const findLine = fileConfig.findLine;
+      let replaceLine = fileConfig.replaceLine;
+      
+      // Render the replacement line with version variables
+      replaceLine = renderTemplate(replaceLine, version, major, minor, patch);
+      
+      console.log(`Searching for line: ${findLine}`);
+      console.log(`Replacing with: ${replaceLine}`);
+      
+      // Split content into lines, find and replace the target line
+      const lines = content.split('\n');
+      let found = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(findLine)) {
+          console.log(`Found match on line ${i+1}: ${lines[i]}`);
+          lines[i] = replaceLine;
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        console.log(`Warning: Could not find line containing '${findLine}' in ${filePath}`);
+        continue;
+      }
+      
+      // Join the lines back together
+      const updatedContent = lines.join('\n');
+      
+      // Write the updated content back to the file
+      await fs.writeFile(filePath, updatedContent, 'utf8');
+      console.log(`Updated ${filePath} with new version information 💅`);
+      
+      processedFiles.push(filePath);
+    } catch (error) {
+      console.error(`Error processing update file ${filePath}: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  return processedFiles;
+}
+
 module.exports = {
   processVersionFiles,
-  processTemplateFiles
+  processTemplateFiles,
+  processUpdateFiles
 };

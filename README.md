@@ -194,6 +194,22 @@ Create a template file with `.tpl` in the filename, like `package.tpl.json` and 
 
 Release Boss will process this into `package.json` with the correct version values! 💁‍♀️
 
+### 3️⃣ Line-based Search and Replace (for update files)
+
+For files where you need to find and replace specific lines (like when you can't add template markers), use the `updateFiles` feature:
+
+```yaml
+updateFiles:
+  - file: src/version.go
+    findLine: "const Version = "
+    replaceLine: "const Version = \"v{{version}}\""
+  - file: package.json
+    findLine: "  \"version\": "
+    replaceLine: "  \"version\": \"{{version}}\","
+```
+
+This will search for lines containing the `findLine` text and replace them with the `replaceLine` template. Super handy for files where you can't add template markers or when working with external tools that have specific formatting requirements! 💅
+
 ## 🔮 Version Bumping Rules
 
 Release Boss is a mind reader when it comes to figuring out which version number to bump! It follows conventional commits to determine if you need a patch, minor, or major release:

@@ -64,6 +64,14 @@ For more complex files, you can use whole-file templates:
 - Template variables are replaced throughout the file
 - Output files can be specified in the configuration
 
+### Line-based Search and Replace
+
+For files where you can't add template markers (like third-party files or files managed by other tools):
+- Specify a line to search for using `findLine`
+- Provide a replacement template with `replaceLine`
+- Release Boss finds the line containing the search text and replaces it with the template
+- Perfect for updating version strings in files you can't modify with markers
+
 ## 👑 Configuration Options
 
 Release Boss now supports both YAML and JSON configuration formats!
