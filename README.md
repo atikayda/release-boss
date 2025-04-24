@@ -62,6 +62,34 @@ jobs:
           config-file: .release-boss.yml
 ```
 
+## 📚 Using a Personal Access Token
+
+A github token (GITHUB_TOKEN) cannot recursively trigger workflows, so if you rely on a following workflow (to build and publish on tag for example), you will need to use a fine-grained personal access token instead.
+
+You can create a fine-grained personal access token here:
+  https://github.com/settings/personal-access-tokens
+
+When you create the token, make sure you select the correct Resource owner (eg. the organisation you want the token to be scoped to), repository scope, expiry duration and the following permissions:
+
+- Metadata: Read access
+- Actions: Read-write access
+- Code: Read-write access
+- Issues: Read-write access
+- Pull requests: Read-write access
+
+Copy the generated token and add it to your repository secrets as (for example) `RELEASER_TOKEN`.
+
+```yaml
+jobs:
+  release:
+    steps:
+      # Your existing steps…
+      - name: Run Release Boss
+        uses: atikayda/release-boss@latest
+        with:
+          token: ${{ secrets.RELEASER_TOKEN }} # Add your token secret name here
+```
+
 ## ⚙️ Configuration
 
 Release Boss now supports both YAML and JSON configuration! 💁‍♀️
