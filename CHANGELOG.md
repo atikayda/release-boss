@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.5 (2025-04-24)
+
+## [1.4.5](https://github.com/atikayda/release-boss/compare/v1.4.4...v1.4.5) (2025-04-24)
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* handle 'not a fast forward' and 'not found' errors gracefully 💅 ([f9c22a6](https://github.com/atikayda/release-boss/commit/f9c22a6dcbccf5df7ba2384118302a1a16d652ad))
+
+
+
 ## 1.4.4 (2025-04-24)
 
 ## [1.4.4](https://github.com/atikayda/release-boss/compare/v1.4.3...v1.4.4) (2025-04-24)
