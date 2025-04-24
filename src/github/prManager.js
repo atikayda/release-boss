@@ -141,17 +141,24 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
               });
               
               // If file exists, add it to our batch
-              if (fileContent) {
+              if (fileContent && fileContent.content) {
                 const content = Buffer.from(fileContent.content, 'base64').toString();
                 filesToPreserve.push({
                   path: filePath,
                   content: content
                 });
                 console.log(`Added ${filePath} from ${config.releaseBranch} to preservation batch`);
+              } else {
+                console.log(`File ${filePath} exists but has no content in ${config.releaseBranch}, skipping...`);
               }
             } catch (fileError) {
-              // If file doesn't exist in release branch, that's fine
-              if (fileError.status !== 404) {
+              // Handle various error cases gracefully
+              if (fileError.status === 404) {
+                console.log(`File ${filePath} doesn't exist in ${config.releaseBranch}, skipping...`);
+              } else if (fileError.message.includes('Not Found')) {
+                console.log(`File ${filePath} not found in ${config.releaseBranch}, skipping... 💁‍♀️`);
+                // Continue with the process even if we can't get this file
+              } else {
                 console.warn(`Warning: Could not preserve ${filePath} from ${config.releaseBranch}: ${fileError.message}`);
               }
             }
@@ -159,14 +166,20 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
           
           // Commit all preserved files in a single batch
           if (filesToPreserve.length > 0) {
-            await commitMultipleFilesToStaging(
-              octokit,
-              context,
-              filesToPreserve,
-              `chore: preserve files from ${config.releaseBranch} for release ${newVersion} 💅`,
-              stagingBranch
-            );
-            console.log(`Preserved ${filesToPreserve.length} files from ${config.releaseBranch} in a single fabulous commit! 💁‍♀️`);
+            try {
+              await commitMultipleFilesToStaging(
+                octokit,
+                context,
+                filesToPreserve,
+                `chore: preserve files from ${config.releaseBranch} for release ${newVersion} 💅`,
+                stagingBranch
+              );
+              console.log(`Preserved ${filesToPreserve.length} files from ${config.releaseBranch} in a single fabulous commit! 💁‍♀️`);
+            } catch (commitError) {
+              console.warn(`Warning: Could not commit preserved files from ${config.releaseBranch}: ${commitError.message}`);
+              console.log(`But don't worry, we'll continue with the process anyway! 💁‍♀️`);
+              // Continue with the process even if we can't commit the preserved files
+            }
           }
           
           // Now, try to cherry-pick changes from main branch for files that aren't in preserveFiles
@@ -376,8 +389,52 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
             
             console.log(`Successfully resolved merge conflicts between ${config.releaseBranch} and ${config.mergeBranch} 🎉`);
           } catch (resolveError) {
-            console.error(`Error resolving merge conflicts: ${resolveError.message}`);
-            throw new Error(`Failed to resolve merge conflicts: ${resolveError.message}`);
+            // Don't fail the entire process if we can't resolve merge conflicts
+            console.warn(`Warning: Error resolving merge conflicts: ${resolveError.message}`);
+            console.log(`But don't worry, we'll still try to create a PR with what we have! 💁‍♀️`);
+            
+            // If we have at least updated the version file, we can still proceed
+            if (updatedFiles && updatedFiles.length > 0) {
+              console.log(`We have ${updatedFiles.length} updated files, so we can still create a PR!`);
+            } else {
+              // If we don't have any updated files, we need to at least update the version file
+              try {
+                // Try to get the version file from the release branch
+                if (config.versionFiles && config.versionFiles.length > 0) {
+                  const versionFile = config.versionFiles[0];
+                  console.log(`Attempting to get version file ${versionFile} from ${config.releaseBranch}...`);
+                  
+                  try {
+                    const { data: fileContent } = await octokit.rest.repos.getContent({
+                      owner,
+                      repo,
+                      path: versionFile,
+                      ref: config.releaseBranch
+                    });
+                    
+                    if (fileContent && fileContent.content) {
+                      const content = Buffer.from(fileContent.content, 'base64').toString();
+                      // Update the version string in the file
+                      const updatedContent = content.replace(/[0-9]+\.[0-9]+\.[0-9]+/g, newVersion);
+                      
+                      // Add the updated file to the list
+                      updatedFiles.push({
+                        path: versionFile,
+                        content: updatedContent
+                      });
+                      
+                      console.log(`Added updated version file ${versionFile} to the PR`);
+                    }
+                  } catch (versionError) {
+                    console.warn(`Could not get version file: ${versionError.message}`);
+                  }
+                }
+              } catch (fallbackError) {
+                console.warn(`Failed to create fallback version update: ${fallbackError.message}`);
+                // At this point, we've tried everything we can
+                throw new Error(`Failed to resolve merge conflicts and couldn't create a fallback: ${resolveError.message}`);
+              }
+            }
           }
         } else {
           // If it's not a merge conflict, rethrow the error
@@ -433,6 +490,7 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
     
     // Get current content of the changelog from the first available source
     let baseContent = '';
+    // Track which branch we got the changelog from
     let sourceUsed = null;
     
     // ALWAYS try to get content from the release branch first to avoid conflicts
@@ -728,6 +786,7 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
     
     // Get current content of the changelog from the first available source
     let baseContent = '';
+    // Track which branch we got the changelog from
     let sourceUsed = null;
     
     // ALWAYS try to get content from the release branch first to avoid conflicts
