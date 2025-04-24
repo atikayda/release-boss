@@ -1152,16 +1152,68 @@ async function commitMultipleFilesToStaging(octokit, context, files, message, br
     parents: [baseTreeSha]
   });
   
-  // Update the branch reference to point to the new commit
-  await octokit.rest.git.updateRef({
-    owner,
-    repo,
-    ref: `heads/${branch}`,
-    sha: newCommit.sha
-  });
-  
-  console.log(`Successfully committed ${files.length} files to ${branch} in a single commit! 💅`);
-  console.log(`Files: ${files.map(f => f.path).join(', ')}`);
+  // Try to update the branch reference to point to the new commit
+  try {
+    await octokit.rest.git.updateRef({
+      owner,
+      repo,
+      ref: `heads/${branch}`,
+      sha: newCommit.sha
+    });
+    
+    console.log(`Successfully committed ${files.length} files to ${branch} in a single commit! 💅`);
+    console.log(`Files: ${files.map(f => f.path).join(', ')}`);
+  } catch (error) {
+    // Check if this is a "not a fast forward" error
+    if (error.message.includes('Update is not a fast forward') || 
+        (error.response && error.response.data && 
+         error.response.data.message && 
+         error.response.data.message.includes('Update is not a fast forward'))) {
+      
+      console.log(`💁‍♀️ Oh honey, we got a "not a fast forward" error! Let me fix that for you...`);
+      
+      // Get the latest state of the branch
+      try {
+        // First, let's fetch the latest state of the branch
+        const { data: latestRefData } = await octokit.rest.git.getRef({
+          owner,
+          repo,
+          ref: `heads/${branch}`
+        });
+        
+        const latestSha = latestRefData.object.sha;
+        console.log(`Current branch HEAD is at ${latestSha.substring(0, 7)}`);
+        
+        // Create a new commit with the latest branch as parent
+        const { data: mergeCommit } = await octokit.rest.git.createCommit({
+          owner,
+          repo,
+          message: `${message} (resolved fast-forward issue)`,
+          tree: newTree.sha,
+          parents: [latestSha] // Use the latest SHA as parent
+        });
+        
+        // Force update the branch reference
+        await octokit.rest.git.updateRef({
+          owner,
+          repo,
+          ref: `heads/${branch}`,
+          sha: mergeCommit.sha,
+          force: true // Force the update to resolve the fast-forward issue
+        });
+        
+        console.log(`Successfully committed ${files.length} files to ${branch} with force update! 💅`);
+        console.log(`Files: ${files.map(f => f.path).join(', ')}`);
+      } catch (retryError) {
+        console.error(`Failed to resolve fast-forward issue: ${retryError.message}`);
+        throw new Error(`Failed to commit changes after resolving fast-forward issue: ${retryError.message}`);
+      }
+    } else {
+      // If it's not a fast-forward error, rethrow
+      console.error(`Error updating branch reference: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 /**
