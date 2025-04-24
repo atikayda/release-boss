@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.4 (2025-04-24)
+
+## [1.4.4](https://github.com/atikayda/release-boss/compare/v1.4.3...v1.4.4) (2025-04-24)
+
+### 🛠️ Bug Fixes & Polish 💅
+
+* eliminate the not a fast forward issue ([306edea](https://github.com/atikayda/release-boss/commit/306edeabc8872963c24a55253ae780d13222348e))
+
+
+
 ## 1.4.3 (2025-04-23)
 
 ## [1.4.3](https://github.com/atikayda/release-boss/compare/v1.4.2...v1.4.3) (2025-04-23)
