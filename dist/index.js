@@ -64940,12 +64940,30 @@ module.exports = {
  * @returns {String} - Markdown table with changelog entries
  */
 function generateChangelogTable(commits, config) {
+  // Check if config is valid
+  if (!config || typeof config !== 'object') {
+    console.log('Warning: config is not a valid object! 💁‍♀️ Using default markers.');
+    config = {}; // Use empty object to avoid errors
+  }
+  
   // Get marker configuration
   const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
   const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
   
+  // Ensure commits is an array before processing
+  if (!Array.isArray(commits)) {
+    console.log('Warning: commits is not an array in generateChangelogTable! 💅 Type:', typeof commits);
+    commits = []; // Set to empty array to avoid errors
+  }
+  
   // Convert commits to changelog entries
   const entries = commitsToChangelogEntries(commits);
+  
+  // Ensure entries is an array
+  if (!Array.isArray(entries)) {
+    console.log('Warning: entries is not an array after conversion! 💁‍♀️ Type:', typeof entries);
+    return `${startMarker}\n\n${endMarker}`; // Return empty table
+  }
   
   // Generate table header
   const header = '| Type | Scope | Description | PR | Commit | Author |';
@@ -64953,8 +64971,14 @@ function generateChangelogTable(commits, config) {
   
   // Generate table rows
   const rows = entries.map(entry => {
-    return `| ${entry.type} | ${entry.scope || ''} | ${entry.description} | ${entry.pr} | ${entry.commit} | ${entry.author} |`;
-  });
+    // Check if entry is valid
+    if (!entry || typeof entry !== 'object') {
+      console.log('Warning: Invalid entry in entries, skipping 💅', entry);
+      return null;
+    }
+    
+    return `| ${entry.type || 'unknown'} | ${entry.scope || ''} | ${entry.description || 'No description'} | ${entry.pr || ''} | ${entry.commit || ''} | ${entry.author || ''} |`;
+  }).filter(row => row !== null);
   
   // Combine everything into a table
   return [
@@ -64972,6 +64996,12 @@ function generateChangelogTable(commits, config) {
  * @returns {Array} - Array of changelog entries
  */
 function commitsToChangelogEntries(commits) {
+  // Ensure commits is an array before using map
+  if (!Array.isArray(commits)) {
+    console.log('Warning: commits is not an array! 💅 Type:', typeof commits);
+    return [];
+  }
+  
   return commits.map(commit => {
     // Extract PR number from commit message if available
     const prMatch = commit.message.match(/#(\d+)/);
@@ -64996,12 +65026,29 @@ function commitsToChangelogEntries(commits) {
  * @returns {String|null} - Extracted table or null if not found
  */
 function extractChangelogTable(description, config) {
+  // Check if description is valid
+  if (!description || typeof description !== 'string') {
+    console.log('Warning: PR description is not a valid string! 💅 Type:', typeof description);
+    return null;
+  }
+  
+  // Check if config is valid
+  if (!config || typeof config !== 'object') {
+    console.log('Warning: config is not a valid object! 💁‍♀️ Using default markers.');
+    config = {}; // Use empty object to avoid errors
+  }
+  
   const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
   const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
   
-  const tableRegex = new RegExp(`${startMarker}([\\s\\S]*?)${endMarker}`);
-  const match = description?.match(tableRegex);
-  return match ? match[1].trim() : null;
+  try {
+    const tableRegex = new RegExp(`${startMarker}([\\s\\S]*?)${endMarker}`);
+    const match = description.match(tableRegex);
+    return match ? match[1].trim() : null;
+  } catch (error) {
+    console.log(`Error extracting changelog table: ${error.message} 💅`);
+    return null;
+  }
 }
 
 /**
@@ -65010,18 +65057,38 @@ function extractChangelogTable(description, config) {
  * @returns {Array} - Array of changelog entries
  */
 function parseChangelogTable(tableContent) {
-  if (!tableContent) return [];
+  if (!tableContent || typeof tableContent !== 'string') {
+    console.log('Warning: tableContent is not a valid string! 💅 Type:', typeof tableContent);
+    return [];
+  }
   
   // Split table into lines and remove header and separator rows
   const lines = tableContent.split('\n').filter(line => line.trim());
-  if (lines.length < 3) return []; // Need at least header, separator, and one entry
+  if (lines.length < 3) {
+    console.log('Warning: table has fewer than 3 lines, skipping parsing 💁‍♀️');
+    return []; // Need at least header, separator, and one entry
+  }
   
   const dataRows = lines.slice(2); // Skip header and separator rows
   
+  // Make sure dataRows is an array before mapping
+  if (!Array.isArray(dataRows)) {
+    console.log('Warning: dataRows is not an array! 💅 Type:', typeof dataRows);
+    return [];
+  }
+  
   return dataRows.map(row => {
+    if (typeof row !== 'string') {
+      console.log('Warning: row is not a string! 💁‍♀️ Type:', typeof row);
+      return null;
+    }
+    
     // Parse table row: | type | scope | description | PR | commit | author |
     const cells = row.split('|').map(cell => cell.trim()).filter(cell => cell);
-    if (cells.length < 6) return null; // Invalid row
+    if (cells.length < 6) {
+      console.log('Warning: row has fewer than 6 cells, skipping 💅');
+      return null; // Invalid row
+    }
     
     return {
       type: cells[0],
@@ -65041,15 +65108,34 @@ function parseChangelogTable(tableContent) {
  * @returns {Array} - Merged entries
  */
 function mergeChangelogEntries(existingEntries, newEntries) {
+  // Ensure both parameters are arrays
+  if (!Array.isArray(existingEntries)) {
+    console.log('Warning: existingEntries is not an array! 💅 Type:', typeof existingEntries);
+    existingEntries = [];
+  }
+  
+  if (!Array.isArray(newEntries)) {
+    console.log('Warning: newEntries is not an array! 💁‍♀️ Type:', typeof newEntries);
+    newEntries = [];
+  }
+  
   // Create a map of existing entries by commit hash to avoid duplicates
   const entriesMap = new Map();
   
   existingEntries.forEach(entry => {
+    if (!entry || typeof entry !== 'object' || !entry.commit) {
+      console.log('Warning: Invalid entry in existingEntries, skipping 💅', entry);
+      return;
+    }
     entriesMap.set(entry.commit, entry);
   });
   
   // Add new entries, overwriting if they already exist
   newEntries.forEach(entry => {
+    if (!entry || typeof entry !== 'object' || !entry.commit) {
+      console.log('Warning: Invalid entry in newEntries, skipping 💁‍♀️', entry);
+      return;
+    }
     entriesMap.set(entry.commit, entry);
   });
   
@@ -65109,6 +65195,12 @@ function updatePRDescriptionWithChangelog(description, commits, config) {
  * @returns {String} - Generated changelog content
  */
 function generateFileChangelog(commits, newVersion, baseContent = '') {
+  // Ensure commits is an array before processing
+  if (!Array.isArray(commits)) {
+    console.log('Warning: commits is not an array in generateFileChangelog! 💁‍♀️ Type:', typeof commits);
+    commits = []; // Set to empty array to avoid errors
+  }
+  
   // Convert commits to changelog entries
   const entries = commitsToChangelogEntries(commits);
   
