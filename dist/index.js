@@ -65943,10 +65943,10 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
       }
     }
     
-    if (!branchUsed) {
+    if (!sourceUsed) {
       console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
     } else {
-      console.log(`Using changelog content from ${branchUsed} as base to avoid conflicts 💅`);
+      console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
     }
     
     // Generate changelog content using our new function
