@@ -65003,17 +65003,45 @@ function commitsToChangelogEntries(commits) {
   }
   
   return commits.map(commit => {
+    // Handle case where commit might already be in the expected format
+    if (commit.type && commit.description) {
+      return {
+        type: commit.type,
+        scope: commit.scope || '',
+        description: commit.description,
+        pr: commit.pr || '',
+        commit: commit.commit || '',
+        author: commit.author || ''
+      };
+    }
+    
+    // Check if commit has message property
+    if (!commit.message) {
+      console.log('Warning: commit object has no message property! 💅', commit);
+      return {
+        type: 'unknown',
+        scope: '',
+        description: 'No description available',
+        pr: '',
+        commit: commit.hash ? commit.hash.substring(0, 7) : '',
+        author: ''
+      };
+    }
+    
     // Extract PR number from commit message if available
     const prMatch = commit.message.match(/#(\d+)/);
     const prNumber = prMatch ? prMatch[1] : '';
     const prRef = prNumber ? `#${prNumber}` : '';
     
+    // Check if commit has parsed property before accessing its properties
+    const parsed = commit.parsed || {};
+    
     return {
-      type: commit.parsed.type || 'other',
-      scope: commit.parsed.scope || '',
-      description: commit.parsed.subject || commit.message.split('\n')[0],
+      type: parsed.type || 'other',
+      scope: parsed.scope || '',
+      description: parsed.subject || commit.message.split('\n')[0],
       pr: prRef,
-      commit: commit.hash.substring(0, 7),
+      commit: commit.hash ? commit.hash.substring(0, 7) : '',
       author: commit.author ? `@${commit.author}` : ''
     };
   });
