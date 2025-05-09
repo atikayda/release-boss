@@ -1,22 +1,28 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+// Import the changelog table module
+const { 
+  updatePRDescriptionWithChangelog,
+  generateFileChangelog
+} = require('./changelogTable');
+
 /**
  * Create or update a pull request for a new release
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {String} newVersion - New version to be released
- * @param {String} changelog - Generated changelog content
+ * @param {Array} commits - Analyzed commits for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} [updatedFiles] - List of files that were updated with version info
  */
-async function createOrUpdatePR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
+async function createOrUpdatePR(octokit, context, newVersion, commits, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   console.log(`Creating/updating PR for version ${newVersion}...`);
   
   // Check if we're in a PR context and need to update an existing PR
   if (context.payload.pull_request) {
-    return await updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles);
+    return await updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles);
   }
   
   // Create a new staging branch and PR
@@ -538,27 +544,14 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       }
     }
     
-    if (!sourceUsed) {
+    if (!branchUsed) {
       console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
     } else {
-      console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
+      console.log(`Using changelog content from ${branchUsed} as base to avoid conflicts 💅`);
     }
     
-    // Add new content at the top of the changelog
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    
-    if (baseContent && baseContent.includes('# Changelog')) {
-      // Replace the header and add new content
-      const changelogStart = baseContent.indexOf('# Changelog');
-      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
-      
-      changelogContent = baseContent.substring(0, afterHeader) +
-        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
-        baseContent.substring(afterHeader);
-    } else {
-      // Create a new changelog
-      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
-    }
+    // Generate changelog content using our new function
+    changelogContent = generateFileChangelog(commits, newVersion, baseContent);
     
     console.log(`Prepared changelog content for ${newVersion} 📝`);
   }
@@ -677,13 +670,14 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
   
   // Step 7: Build PR title and body
   const title = config.pullRequestTitle.replace('{version}', newVersion);
-  let body = `${config.pullRequestHeader || 'Release PR'}\n\n`;
+  // Create PR body with changelog table
+  const initialBody = `${config.pullRequestHeader || 'Release PR'}`;
+  
+  // Use the updatePRDescriptionWithChangelog function to add the changelog table
+  let body = updatePRDescriptionWithChangelog(initialBody, commits, config);
   
   // Add a cute intro line
   body += `Time to freshen up our codebase with a fabulous new release! 💅✨\n\n`;
-  
-  // Add changelog to PR body with sparkly formatting
-  body += `## ✨ Changelog ✨\n\n${changelog}\n\n`;
   
   // Add list of updated files with cute styling
   if (updatedFiles && updatedFiles.length > 0) {
@@ -764,11 +758,11 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context 
  * @param {String} newVersion - New version to be released
- * @param {String} changelog - Generated changelog content
+ * @param {Array} commits - Analyzed commits for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} updatedFiles - List of files that were updated with version info
  */
-async function updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
+async function updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   const prNumber = context.payload.pull_request.number;
   
@@ -818,22 +812,8 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
       }
     }
     
-    // Add new content at the top of the changelog
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    let changelogContent;
-    
-    if (baseContent && baseContent.includes('# Changelog')) {
-      // Replace the header and add new content
-      const changelogStart = baseContent.indexOf('# Changelog');
-      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
-      
-      changelogContent = baseContent.substring(0, afterHeader) +
-        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
-        baseContent.substring(afterHeader);
-    } else {
-      // Create a new changelog
-      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
-    }
+    // Generate changelog content using our new function
+    let changelogContent = generateFileChangelog(commits, newVersion, baseContent);
     
     // Add changelog to files to commit
     filesToCommit.push({
@@ -897,19 +877,11 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
     pull_number: prNumber
   });
   
-  // Update or replace the changelog section in the PR body
+  // Update the PR body with the new changelog entries
   let body = pr.body || '';
-  const changelogStart = body.indexOf('## Changelog');
-  const updatedFilesStart = body.indexOf('## Updated Files');
   
-  // Remove existing changelog and updated files sections if they exist
-  if (changelogStart !== -1) {
-    const sectionEnd = updatedFilesStart !== -1 ? updatedFilesStart : body.length;
-    body = body.substring(0, changelogStart) + body.substring(sectionEnd);
-  }
-  
-  // Add the updated changelog
-  body += `\n\n## Changelog\n\n${changelog}\n\n`;
+  // Use the updatePRDescriptionWithChangelog function to update the changelog table
+  body = updatePRDescriptionWithChangelog(body, commits, config);
   
   // Add updated list of files
   if (updatedFiles && updatedFiles.length > 0) {
