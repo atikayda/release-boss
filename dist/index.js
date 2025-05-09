@@ -65149,17 +65149,73 @@ function mergeChangelogEntries(existingEntries, newEntries) {
 /**
  * Update PR description with changelog table
  * @param {String} description - Existing PR description
- * @param {Array} commits - New commits to add to the changelog
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @returns {String} - Updated PR description
  */
-function updatePRDescriptionWithChangelog(description, commits, config) {
+function updatePRDescriptionWithChangelog(description, changelog, config) {
   // Extract existing changelog table if it exists
   const existingTable = extractChangelogTable(description || '', config);
   const existingEntries = parseChangelogTable(existingTable);
   
-  // Generate new changelog entries from commits
-  const newEntries = commitsToChangelogEntries(commits);
+  // The changelog parameter is expected to be a string
+  // We need to convert it to an array of entries for the table
+  let parsedCommits = [];
+  
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog is not a string in updatePRDescriptionWithChangelog! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
+  
+  // Try to extract structured data from the changelog string
+  // Look for patterns that might indicate commit information
+  try {
+    // First check if it's a JSON string of commits
+    if (changelog.trim().startsWith('[')) {
+      try {
+        parsedCommits = JSON.parse(changelog);
+        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
+      } catch (jsonError) {
+        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
+        // Not JSON, continue with other parsing methods
+      }
+    }
+    
+    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    if (parsedCommits.length === 0) {
+      // Simple extraction of commit info from markdown lines
+      // Example: * **feat(scope):** description (#123) (abcd123)
+      const lines = changelog.split('\n');
+      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      lines.forEach(line => {
+        const match = line.match(commitRegex);
+        if (match) {
+          parsedCommits.push({
+            type: match[1] || 'unknown',
+            scope: match[2] || '',
+            message: match[3] || '',
+            pr: match[4] ? `#${match[4]}` : '',
+            hash: match[5] || '',
+            author: ''
+          });
+        }
+      });
+      
+      if (parsedCommits.length > 0) {
+        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
+      } else {
+        console.log(`Couldn't extract commit info from changelog string 💅`);
+      }
+    }
+  } catch (error) {
+    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
+    parsedCommits = [];
+  }
+  
+  // Generate new changelog entries from parsed commits
+  const newEntries = commitsToChangelogEntries(parsedCommits);
   
   // Merge entries
   const mergedEntries = mergeChangelogEntries(existingEntries, newEntries);
@@ -65188,26 +65244,97 @@ function updatePRDescriptionWithChangelog(description, commits, config) {
 }
 
 /**
- * Generate file-based changelog content from commits
- * @param {Array} commits - Array of analyzed commits
+ * Generate file-based changelog content from changelog string
+ * @param {String} changelog - Changelog content for the release
  * @param {String} newVersion - New version to be released
  * @param {String} baseContent - Existing changelog content (optional)
  * @returns {String} - Generated changelog content
  */
-function generateFileChangelog(commits, newVersion, baseContent = '') {
-  // Ensure commits is an array before processing
-  if (!Array.isArray(commits)) {
-    console.log('Warning: commits is not an array in generateFileChangelog! 💁‍♀️ Type:', typeof commits);
-    commits = []; // Set to empty array to avoid errors
+function generateFileChangelog(changelog, newVersion, baseContent = '') {
+  // The changelog parameter is expected to be a string
+  // We need to convert it to an array of entries for the file-based changelog
+  let parsedCommits = [];
+  
+  if (typeof changelog !== 'string') {
+    console.log('Warning: changelog is not a string in generateFileChangelog! 💅 Type:', typeof changelog);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
   }
   
-  // Convert commits to changelog entries
-  const entries = commitsToChangelogEntries(commits);
+  // Try to extract structured data from the changelog string
+  // Look for patterns that might indicate commit information
+  try {
+    // First check if it's a JSON string of commits
+    if (changelog.trim().startsWith('[')) {
+      try {
+        parsedCommits = JSON.parse(changelog);
+        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
+      } catch (jsonError) {
+        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
+        // Not JSON, continue with other parsing methods
+      }
+    }
+    
+    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    if (parsedCommits.length === 0) {
+      // Simple extraction of commit info from markdown lines
+      // Example: * **feat(scope):** description (#123) (abcd123)
+      const lines = changelog.split('\n');
+      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      lines.forEach(line => {
+        const match = line.match(commitRegex);
+        if (match) {
+          parsedCommits.push({
+            type: match[1] || 'unknown',
+            scope: match[2] || '',
+            message: match[3] || '',
+            pr: match[4] ? `#${match[4]}` : '',
+            hash: match[5] || '',
+            author: ''
+          });
+        }
+      });
+      
+      if (parsedCommits.length > 0) {
+        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
+      } else {
+        console.log(`Couldn't extract commit info from changelog string 💅`);
+      }
+    }
+  } catch (error) {
+    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
+    parsedCommits = [];
+  }
+  
+  // Convert parsed commits to changelog entries
+  const entries = commitsToChangelogEntries(parsedCommits);
+  
+  // Ensure entries is an array before processing
+  if (!Array.isArray(entries)) {
+    console.log('Warning: entries is not an array in generateFileChangelog! 💅 Type:', typeof entries);
+    return `# Changelog\n\n## ${newVersion} (${new Date().toISOString().split('T')[0]})\n\nNo valid entries found.\n`;
+  }
   
   // Format entries as markdown list items
   const markdownContent = entries.map(entry => {
-    return `* **${entry.type}${entry.scope ? `(${entry.scope})` : ''}:** ${entry.description} ${entry.pr} ${entry.commit}`;
-  }).join('\n');
+    // Check if entry is valid
+    if (!entry || typeof entry !== 'object') {
+      console.log('Warning: Invalid entry in generateFileChangelog, skipping 💅', entry);
+      return null;
+    }
+    
+    // Use optional chaining and nullish coalescing to handle potentially undefined properties
+    const type = entry.type ?? 'unknown';
+    const scope = entry.scope ?? '';
+    const description = entry.description ?? 'No description';
+    const pr = entry.pr ?? '';
+    const commit = entry.commit ?? '';
+    
+    return `* **${type}${scope ? `(${scope})` : ''}:** ${description} ${pr} ${commit}`;
+  })
+  .filter(item => item !== null) // Remove any null entries
+  .join('\n');
   
   // Get today's date in YYYY-MM-DD format
   const today = new Date().toISOString().split('T')[0];
@@ -65503,17 +65630,25 @@ const {
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {String} newVersion - New version to be released
- * @param {Array} commits - Analyzed commits for the release
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} [updatedFiles] - List of files that were updated with version info
  */
-async function createOrUpdatePR(octokit, context, newVersion, commits, config, updatedFiles = []) {
+async function createOrUpdatePR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   console.log(`Creating/updating PR for version ${newVersion}...`);
   
+  // The changelog parameter is expected to be a string
+  // No type conversion needed as it should already be a string from generateChangelog
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog parameter is not a string! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
+  
   // Check if we're in a PR context and need to update an existing PR
   if (context.payload.pull_request) {
-    return await updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles);
+    return await updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles);
   }
   
   // Create a new staging branch and PR
@@ -66042,7 +66177,9 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
     }
     
     // Generate changelog content using our new function
-    changelogContent = generateFileChangelog(commits, newVersion, baseContent);
+    // Pass the changelog string directly to generateFileChangelog
+    // The function will handle parsing if needed
+    changelogContent = generateFileChangelog(changelog, newVersion, baseContent);
     
     console.log(`Prepared changelog content for ${newVersion} 📝`);
   }
@@ -66165,7 +66302,7 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
   const initialBody = `${config.pullRequestHeader || 'Release PR'}`;
   
   // Use the updatePRDescriptionWithChangelog function to add the changelog table
-  let body = updatePRDescriptionWithChangelog(initialBody, commits, config);
+  let body = updatePRDescriptionWithChangelog(initialBody, changelog, config);
   
   // Add a cute intro line
   body += `Time to freshen up our codebase with a fabulous new release! 💅✨\n\n`;
@@ -66249,15 +66386,23 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context 
  * @param {String} newVersion - New version to be released
- * @param {Array} commits - Analyzed commits for the release
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} updatedFiles - List of files that were updated with version info
  */
-async function updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles = []) {
+async function updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   const prNumber = context.payload.pull_request.number;
   
   console.log(`Updating existing PR #${prNumber} with new version ${newVersion}...`);
+  
+  // The changelog parameter is expected to be a string
+  // No type conversion needed as it should already be a string from generateChangelog
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog parameter is not a string in updateExistingPR! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
   
   // Get the PR branch
   const prBranch = context.payload.pull_request.head.ref;
@@ -66304,7 +66449,9 @@ async function updateExistingPR(octokit, context, newVersion, commits, config, u
     }
     
     // Generate changelog content using our new function
-    let changelogContent = generateFileChangelog(commits, newVersion, baseContent);
+    // Pass the changelog string directly to generateFileChangelog
+    // The function will handle parsing if needed
+    let changelogContent = generateFileChangelog(changelog, newVersion, baseContent);
     
     // Add changelog to files to commit
     filesToCommit.push({
@@ -66372,7 +66519,7 @@ async function updateExistingPR(octokit, context, newVersion, commits, config, u
   let body = pr.body || '';
   
   // Use the updatePRDescriptionWithChangelog function to update the changelog table
-  body = updatePRDescriptionWithChangelog(body, commits, config);
+  body = updatePRDescriptionWithChangelog(body, changelog, config);
   
   // Add updated list of files
   if (updatedFiles && updatedFiles.length > 0) {
