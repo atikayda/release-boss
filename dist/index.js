@@ -64094,6 +64094,29 @@ const semver = __nccwpck_require__(1383);
 const conventionalCommitsParser = __nccwpck_require__(1655);
 
 /**
+ * Convert commit objects to changelog entry objects
+ * @param {Array} commits - Array of parsed commits
+ * @returns {Array} - Array of changelog entries
+ */
+function commitsToChangelogEntries(commits) {
+  return commits.map(commit => {
+    // Extract PR number from commit message if available
+    const prMatch = commit.message.match(/#(\d+)/);
+    const prNumber = prMatch ? prMatch[1] : '';
+    const prRef = prNumber ? `#${prNumber}` : '';
+    
+    return {
+      type: commit.parsed.type || 'other',
+      scope: commit.parsed.scope || '',
+      description: commit.parsed.subject || commit.message.split('\n')[0],
+      pr: prRef,
+      commit: commit.hash.substring(0, 7),
+      author: commit.author ? `@${commit.author}` : ''
+    };
+  });
+}
+
+/**
  * Commit types that trigger a minor version bump (new features)
  */
 const MINOR_BUMP_TYPES = ['feat'];
@@ -64114,23 +64137,29 @@ const NO_BUMP_TYPES = ['docs', 'style', 'test', 'ci', 'build'];
 const EXCLUDED_TYPES = ['chore'];
 
 /**
- * Analyze commits between two branches to determine the type of version bump
+ * Analyze commits between two references (branches, commits, etc.)
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {Object} config - Release Boss configuration
+ * @param {String} baseRef - Base reference (default: config.releaseBranch)
+ * @param {String} headRef - Head reference (default: config.mergeBranch)
  * @returns {Array} - Array of parsed and analyzed commits
  */
-async function analyzeCommits(octokit, context, config) {
+async function analyzeCommits(octokit, context, config, baseRef, headRef) {
   const { owner, repo } = context.repo;
   
-  console.log(`Analyzing commits between ${config.releaseBranch} and ${config.mergeBranch}...`);
+  // Use provided refs or fall back to config values
+  const base = baseRef || config.releaseBranch;
+  const head = headRef || config.mergeBranch;
   
-  // Get commits between releaseBranch and mergeBranch
+  console.log(`Analyzing commits between ${base} and ${head}...`);
+  
+  // Get commits between base and head references
   const compareResponse = await octokit.rest.repos.compareCommits({
     owner,
     repo,
-    base: config.releaseBranch,
-    head: config.mergeBranch
+    base,
+    head
   });
   
   if (!compareResponse.data.commits || compareResponse.data.commits.length === 0) {
@@ -64362,11 +64391,43 @@ async function determineVersionBump(commits, octokit, context, config) {
   };
 }
 
+/**
+ * Find new commits since the last update
+ * @param {Object} octokit - GitHub API client
+ * @param {Object} context - GitHub context
+ * @param {String} lastCommitSha - SHA of the last processed commit
+ * @param {String} headRef - Reference to compare against (branch or commit)
+ * @returns {Array} - Array of new commits
+ */
+async function findNewCommitsSince(octokit, context, lastCommitSha, headRef) {
+  const { owner, repo } = context.repo;
+  
+  console.log(`Finding new commits since ${lastCommitSha.substring(0, 7)}...`);
+  
+  // Get commits between lastCommitSha and headRef
+  const compareResponse = await octokit.rest.repos.compareCommits({
+    owner,
+    repo,
+    base: lastCommitSha,
+    head: headRef
+  });
+  
+  if (!compareResponse.data.commits || compareResponse.data.commits.length === 0) {
+    console.log('No new commits found');
+    return [];
+  }
+  
+  console.log(`Found ${compareResponse.data.commits.length} new commits since ${lastCommitSha.substring(0, 7)} 💅`);
+  return compareResponse.data.commits;
+}
+
 module.exports = {
   analyzeCommits,
   determineVersionBump,
   getBumpTypeForCommit, // Exported for testing
-  isExcludedFromChangelog // Exported for testing
+  isExcludedFromChangelog, // Exported for testing
+  commitsToChangelogEntries, // Exported for changelog table generation
+  findNewCommitsSince // Exported for PR updates
 };
 
 
@@ -64864,6 +64925,228 @@ module.exports = {
 
 /***/ }),
 
+/***/ 1612:
+/***/ ((module) => {
+
+/**
+ * Changelog Table Generator for Release Boss
+ * Handles generating and updating changelog tables in PR descriptions
+ */
+
+/**
+ * Generate a changelog table from commits
+ * @param {Array} commits - Array of analyzed commits
+ * @param {Object} config - Release Boss configuration
+ * @returns {String} - Markdown table with changelog entries
+ */
+function generateChangelogTable(commits, config) {
+  // Get marker configuration
+  const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
+  const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
+  
+  // Convert commits to changelog entries
+  const entries = commitsToChangelogEntries(commits);
+  
+  // Generate table header
+  const header = '| Type | Scope | Description | PR | Commit | Author |';
+  const separator = '|------|-------|-------------|----|---------| ------|';
+  
+  // Generate table rows
+  const rows = entries.map(entry => {
+    return `| ${entry.type} | ${entry.scope || ''} | ${entry.description} | ${entry.pr} | ${entry.commit} | ${entry.author} |`;
+  });
+  
+  // Combine everything into a table
+  return [
+    startMarker,
+    header,
+    separator,
+    ...rows,
+    endMarker
+  ].join('\n');
+}
+
+/**
+ * Convert commit objects to changelog entries
+ * @param {Array} commits - Array of parsed commits
+ * @returns {Array} - Array of changelog entries
+ */
+function commitsToChangelogEntries(commits) {
+  return commits.map(commit => {
+    // Extract PR number from commit message if available
+    const prMatch = commit.message.match(/#(\d+)/);
+    const prNumber = prMatch ? prMatch[1] : '';
+    const prRef = prNumber ? `#${prNumber}` : '';
+    
+    return {
+      type: commit.parsed.type || 'other',
+      scope: commit.parsed.scope || '',
+      description: commit.parsed.subject || commit.message.split('\n')[0],
+      pr: prRef,
+      commit: commit.hash.substring(0, 7),
+      author: commit.author ? `@${commit.author}` : ''
+    };
+  });
+}
+
+/**
+ * Extract changelog table from PR description
+ * @param {String} description - PR description
+ * @param {Object} config - Release Boss configuration
+ * @returns {String|null} - Extracted table or null if not found
+ */
+function extractChangelogTable(description, config) {
+  const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
+  const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
+  
+  const tableRegex = new RegExp(`${startMarker}([\\s\\S]*?)${endMarker}`);
+  const match = description?.match(tableRegex);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Parse changelog table into structured data
+ * @param {String} tableContent - Markdown table content
+ * @returns {Array} - Array of changelog entries
+ */
+function parseChangelogTable(tableContent) {
+  if (!tableContent) return [];
+  
+  // Split table into lines and remove header and separator rows
+  const lines = tableContent.split('\n').filter(line => line.trim());
+  if (lines.length < 3) return []; // Need at least header, separator, and one entry
+  
+  const dataRows = lines.slice(2); // Skip header and separator rows
+  
+  return dataRows.map(row => {
+    // Parse table row: | type | scope | description | PR | commit | author |
+    const cells = row.split('|').map(cell => cell.trim()).filter(cell => cell);
+    if (cells.length < 6) return null; // Invalid row
+    
+    return {
+      type: cells[0],
+      scope: cells[1],
+      description: cells[2],
+      pr: cells[3],
+      commit: cells[4],
+      author: cells[5]
+    };
+  }).filter(entry => entry !== null);
+}
+
+/**
+ * Merge new entries into existing changelog entries
+ * @param {Array} existingEntries - Existing changelog entries
+ * @param {Array} newEntries - New changelog entries to add
+ * @returns {Array} - Merged entries
+ */
+function mergeChangelogEntries(existingEntries, newEntries) {
+  // Create a map of existing entries by commit hash to avoid duplicates
+  const entriesMap = new Map();
+  
+  existingEntries.forEach(entry => {
+    entriesMap.set(entry.commit, entry);
+  });
+  
+  // Add new entries, overwriting if they already exist
+  newEntries.forEach(entry => {
+    entriesMap.set(entry.commit, entry);
+  });
+  
+  // Convert back to array and sort by type (features first, then fixes, etc.)
+  return Array.from(entriesMap.values()).sort((a, b) => {
+    const typeOrder = { feat: 1, fix: 2, perf: 3, refactor: 4, docs: 5 };
+    return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
+  });
+}
+
+/**
+ * Update PR description with changelog table
+ * @param {String} description - Existing PR description
+ * @param {Array} commits - New commits to add to the changelog
+ * @param {Object} config - Release Boss configuration
+ * @returns {String} - Updated PR description
+ */
+function updatePRDescriptionWithChangelog(description, commits, config) {
+  // Extract existing changelog table if it exists
+  const existingTable = extractChangelogTable(description || '', config);
+  const existingEntries = parseChangelogTable(existingTable);
+  
+  // Generate new changelog entries from commits
+  const newEntries = commitsToChangelogEntries(commits);
+  
+  // Merge entries
+  const mergedEntries = mergeChangelogEntries(existingEntries, newEntries);
+  
+  // Generate updated changelog table
+  const updatedTable = generateChangelogTable(mergedEntries, config);
+  
+  // Replace or add changelog table in PR description
+  if (existingTable) {
+    // Replace existing table
+    const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
+    const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
+    return description.replace(
+      new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`),
+      updatedTable
+    );
+  } else {
+    // Add table to description (after the header if it exists)
+    const headerEnd = description?.indexOf('\n\n');
+    if (headerEnd !== -1) {
+      return description.substring(0, headerEnd + 2) + updatedTable + description.substring(headerEnd + 2);
+    } else {
+      return `${description || ''}\n\n${updatedTable}`;
+    }
+  }
+}
+
+/**
+ * Generate file-based changelog content from commits
+ * @param {Array} commits - Array of analyzed commits
+ * @param {String} newVersion - New version to be released
+ * @param {String} baseContent - Existing changelog content (optional)
+ * @returns {String} - Generated changelog content
+ */
+function generateFileChangelog(commits, newVersion, baseContent = '') {
+  // Convert commits to changelog entries
+  const entries = commitsToChangelogEntries(commits);
+  
+  // Format entries as markdown list items
+  const markdownContent = entries.map(entry => {
+    return `* **${entry.type}${entry.scope ? `(${entry.scope})` : ''}:** ${entry.description} ${entry.pr} ${entry.commit}`;
+  }).join('\n');
+  
+  // Get today's date in YYYY-MM-DD format
+  const today = new Date().toISOString().split('T')[0];
+  
+  // If we have existing content, add the new section at the top
+  if (baseContent && baseContent.includes('# Changelog')) {
+    const changelogStart = baseContent.indexOf('# Changelog');
+    const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
+    
+    return baseContent.substring(0, afterHeader) +
+      `## ${newVersion} (${today})\n\n${markdownContent}\n\n` +
+      baseContent.substring(afterHeader);
+  } else {
+    // Create a new changelog
+    return `# Changelog\n\n## ${newVersion} (${today})\n\n${markdownContent}\n`;
+  }
+}
+
+module.exports = {
+  generateChangelogTable,
+  commitsToChangelogEntries,
+  extractChangelogTable,
+  parseChangelogTable,
+  mergeChangelogEntries,
+  updatePRDescriptionWithChangelog,
+  generateFileChangelog
+};
+
+
+/***/ }),
+
 /***/ 5162:
 /***/ ((module) => {
 
@@ -65117,22 +65400,28 @@ module.exports = {
 const fs = (__nccwpck_require__(7147).promises);
 const path = __nccwpck_require__(1017);
 
+// Import the changelog table module
+const { 
+  updatePRDescriptionWithChangelog,
+  generateFileChangelog
+} = __nccwpck_require__(1612);
+
 /**
  * Create or update a pull request for a new release
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {String} newVersion - New version to be released
- * @param {String} changelog - Generated changelog content
+ * @param {Array} commits - Analyzed commits for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} [updatedFiles] - List of files that were updated with version info
  */
-async function createOrUpdatePR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
+async function createOrUpdatePR(octokit, context, newVersion, commits, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   console.log(`Creating/updating PR for version ${newVersion}...`);
   
   // Check if we're in a PR context and need to update an existing PR
   if (context.payload.pull_request) {
-    return await updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles);
+    return await updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles);
   }
   
   // Create a new staging branch and PR
@@ -65654,27 +65943,14 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
       }
     }
     
-    if (!sourceUsed) {
+    if (!branchUsed) {
       console.log(`Couldn't find changelog in any branch, will start fresh 💁‍♀️`);
     } else {
-      console.log(`Using changelog content from ${sourceUsed} as base to avoid conflicts 💅`);
+      console.log(`Using changelog content from ${branchUsed} as base to avoid conflicts 💅`);
     }
     
-    // Add new content at the top of the changelog
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    
-    if (baseContent && baseContent.includes('# Changelog')) {
-      // Replace the header and add new content
-      const changelogStart = baseContent.indexOf('# Changelog');
-      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
-      
-      changelogContent = baseContent.substring(0, afterHeader) +
-        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
-        baseContent.substring(afterHeader);
-    } else {
-      // Create a new changelog
-      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
-    }
+    // Generate changelog content using our new function
+    changelogContent = generateFileChangelog(commits, newVersion, baseContent);
     
     console.log(`Prepared changelog content for ${newVersion} 📝`);
   }
@@ -65793,13 +66069,14 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
   
   // Step 7: Build PR title and body
   const title = config.pullRequestTitle.replace('{version}', newVersion);
-  let body = `${config.pullRequestHeader || 'Release PR'}\n\n`;
+  // Create PR body with changelog table
+  const initialBody = `${config.pullRequestHeader || 'Release PR'}`;
+  
+  // Use the updatePRDescriptionWithChangelog function to add the changelog table
+  let body = updatePRDescriptionWithChangelog(initialBody, commits, config);
   
   // Add a cute intro line
   body += `Time to freshen up our codebase with a fabulous new release! 💅✨\n\n`;
-  
-  // Add changelog to PR body with sparkly formatting
-  body += `## ✨ Changelog ✨\n\n${changelog}\n\n`;
   
   // Add list of updated files with cute styling
   if (updatedFiles && updatedFiles.length > 0) {
@@ -65880,11 +66157,11 @@ async function createOrUpdatePR(octokit, context, newVersion, changelog, config,
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context 
  * @param {String} newVersion - New version to be released
- * @param {String} changelog - Generated changelog content
+ * @param {Array} commits - Analyzed commits for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} updatedFiles - List of files that were updated with version info
  */
-async function updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
+async function updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   const prNumber = context.payload.pull_request.number;
   
@@ -65934,22 +66211,8 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
       }
     }
     
-    // Add new content at the top of the changelog
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    let changelogContent;
-    
-    if (baseContent && baseContent.includes('# Changelog')) {
-      // Replace the header and add new content
-      const changelogStart = baseContent.indexOf('# Changelog');
-      const afterHeader = baseContent.indexOf('\n\n', changelogStart) + 2;
-      
-      changelogContent = baseContent.substring(0, afterHeader) +
-        `## ${newVersion} (${today})\n\n${changelog}\n\n` +
-        baseContent.substring(afterHeader);
-    } else {
-      // Create a new changelog
-      changelogContent = `# Changelog\n\n## ${newVersion} (${today})\n\n${changelog}\n`;
-    }
+    // Generate changelog content using our new function
+    let changelogContent = generateFileChangelog(commits, newVersion, baseContent);
     
     // Add changelog to files to commit
     filesToCommit.push({
@@ -66013,19 +66276,11 @@ async function updateExistingPR(octokit, context, newVersion, changelog, config,
     pull_number: prNumber
   });
   
-  // Update or replace the changelog section in the PR body
+  // Update the PR body with the new changelog entries
   let body = pr.body || '';
-  const changelogStart = body.indexOf('## Changelog');
-  const updatedFilesStart = body.indexOf('## Updated Files');
   
-  // Remove existing changelog and updated files sections if they exist
-  if (changelogStart !== -1) {
-    const sectionEnd = updatedFilesStart !== -1 ? updatedFilesStart : body.length;
-    body = body.substring(0, changelogStart) + body.substring(sectionEnd);
-  }
-  
-  // Add the updated changelog
-  body += `\n\n## Changelog\n\n${changelog}\n\n`;
+  // Use the updatePRDescriptionWithChangelog function to update the changelog table
+  body = updatePRDescriptionWithChangelog(body, commits, config);
   
   // Add updated list of files
   if (updatedFiles && updatedFiles.length > 0) {
@@ -66469,7 +66724,40 @@ const DEFAULT_CONFIG = {
     { type: 'fix', section: 'Bug Fixes', hidden: false },
     { type: 'perf', section: 'Performance Improvements', hidden: false }
   ],
-  changelogPath: 'CHANGELOG.md'
+  changelogPath: 'CHANGELOG.md',
+  // Changelog table configuration for PR-based tracking
+  changelogTable: {
+    enabled: true,
+    // Table format options
+    columns: [
+      { name: "Type", field: "type" },
+      { name: "Scope", field: "scope" },
+      { name: "Description", field: "description" },
+      { name: "PR", field: "pr" },
+      { name: "Commit", field: "commit" },
+      { name: "Author", field: "author" }
+    ],
+    // HTML comment markers to identify the changelog table
+    markers: {
+      start: "<!-- RELEASE_BOSS_CHANGELOG_START -->",
+      end: "<!-- RELEASE_BOSS_CHANGELOG_END -->"
+    },
+    // Sorting options
+    sorting: {
+      enabled: true,
+      order: ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'ci', 'build', 'chore']
+    },
+    // Filtering options
+    filtering: {
+      excludeTypes: ['chore'],  // Commit types to exclude from changelog table
+      requireScope: false       // Whether to require a scope for all entries
+    },
+    // Placement options
+    placement: {
+      afterHeader: true,        // Place table after PR header
+      beforeBody: false         // Place table before PR body
+    }
+  }
 };
 
 /**
@@ -66563,6 +66851,44 @@ function validateConfig(config) {
   
   if (config.versionFiles && !Array.isArray(config.versionFiles)) {
     throw new Error('versionFiles must be an array');
+  }
+  
+  // Validate changelog table config if enabled
+  if (config.changelogTable) {
+    // If not explicitly disabled, ensure it has the required properties
+    if (config.changelogTable.enabled !== false) {
+      // Set default values if not provided
+      if (!config.changelogTable.columns || !Array.isArray(config.changelogTable.columns)) {
+        config.changelogTable.columns = DEFAULT_CONFIG.changelogTable.columns;
+      }
+      
+      if (!config.changelogTable.markers) {
+        config.changelogTable.markers = DEFAULT_CONFIG.changelogTable.markers;
+      }
+      
+      // Validate and set default sorting options
+      if (!config.changelogTable.sorting) {
+        config.changelogTable.sorting = DEFAULT_CONFIG.changelogTable.sorting;
+      } else if (config.changelogTable.sorting.enabled !== false && 
+                (!config.changelogTable.sorting.order || !Array.isArray(config.changelogTable.sorting.order))) {
+        config.changelogTable.sorting.order = DEFAULT_CONFIG.changelogTable.sorting.order;
+      }
+      
+      // Validate and set default filtering options
+      if (!config.changelogTable.filtering) {
+        config.changelogTable.filtering = DEFAULT_CONFIG.changelogTable.filtering;
+      }
+      
+      // Validate and set default placement options
+      if (!config.changelogTable.placement) {
+        config.changelogTable.placement = DEFAULT_CONFIG.changelogTable.placement;
+      }
+      
+      console.log(`Changelog table configuration validated and ready to slay! 💅`);
+    }
+  } else {
+    // Add default changelog table config
+    config.changelogTable = DEFAULT_CONFIG.changelogTable;
   }
   
   // Validate changelog sections
