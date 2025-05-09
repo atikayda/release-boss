@@ -219,17 +219,73 @@ function mergeChangelogEntries(existingEntries, newEntries) {
 /**
  * Update PR description with changelog table
  * @param {String} description - Existing PR description
- * @param {Array} commits - New commits to add to the changelog
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @returns {String} - Updated PR description
  */
-function updatePRDescriptionWithChangelog(description, commits, config) {
+function updatePRDescriptionWithChangelog(description, changelog, config) {
   // Extract existing changelog table if it exists
   const existingTable = extractChangelogTable(description || '', config);
   const existingEntries = parseChangelogTable(existingTable);
   
-  // Generate new changelog entries from commits
-  const newEntries = commitsToChangelogEntries(commits);
+  // The changelog parameter is expected to be a string
+  // We need to convert it to an array of entries for the table
+  let parsedCommits = [];
+  
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog is not a string in updatePRDescriptionWithChangelog! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
+  
+  // Try to extract structured data from the changelog string
+  // Look for patterns that might indicate commit information
+  try {
+    // First check if it's a JSON string of commits
+    if (changelog.trim().startsWith('[')) {
+      try {
+        parsedCommits = JSON.parse(changelog);
+        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
+      } catch (jsonError) {
+        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
+        // Not JSON, continue with other parsing methods
+      }
+    }
+    
+    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    if (parsedCommits.length === 0) {
+      // Simple extraction of commit info from markdown lines
+      // Example: * **feat(scope):** description (#123) (abcd123)
+      const lines = changelog.split('\n');
+      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      lines.forEach(line => {
+        const match = line.match(commitRegex);
+        if (match) {
+          parsedCommits.push({
+            type: match[1] || 'unknown',
+            scope: match[2] || '',
+            message: match[3] || '',
+            pr: match[4] ? `#${match[4]}` : '',
+            hash: match[5] || '',
+            author: ''
+          });
+        }
+      });
+      
+      if (parsedCommits.length > 0) {
+        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
+      } else {
+        console.log(`Couldn't extract commit info from changelog string 💅`);
+      }
+    }
+  } catch (error) {
+    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
+    parsedCommits = [];
+  }
+  
+  // Generate new changelog entries from parsed commits
+  const newEntries = commitsToChangelogEntries(parsedCommits);
   
   // Merge entries
   const mergedEntries = mergeChangelogEntries(existingEntries, newEntries);
@@ -258,26 +314,97 @@ function updatePRDescriptionWithChangelog(description, commits, config) {
 }
 
 /**
- * Generate file-based changelog content from commits
- * @param {Array} commits - Array of analyzed commits
+ * Generate file-based changelog content from changelog string
+ * @param {String} changelog - Changelog content for the release
  * @param {String} newVersion - New version to be released
  * @param {String} baseContent - Existing changelog content (optional)
  * @returns {String} - Generated changelog content
  */
-function generateFileChangelog(commits, newVersion, baseContent = '') {
-  // Ensure commits is an array before processing
-  if (!Array.isArray(commits)) {
-    console.log('Warning: commits is not an array in generateFileChangelog! 💁‍♀️ Type:', typeof commits);
-    commits = []; // Set to empty array to avoid errors
+function generateFileChangelog(changelog, newVersion, baseContent = '') {
+  // The changelog parameter is expected to be a string
+  // We need to convert it to an array of entries for the file-based changelog
+  let parsedCommits = [];
+  
+  if (typeof changelog !== 'string') {
+    console.log('Warning: changelog is not a string in generateFileChangelog! 💅 Type:', typeof changelog);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
   }
   
-  // Convert commits to changelog entries
-  const entries = commitsToChangelogEntries(commits);
+  // Try to extract structured data from the changelog string
+  // Look for patterns that might indicate commit information
+  try {
+    // First check if it's a JSON string of commits
+    if (changelog.trim().startsWith('[')) {
+      try {
+        parsedCommits = JSON.parse(changelog);
+        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
+      } catch (jsonError) {
+        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
+        // Not JSON, continue with other parsing methods
+      }
+    }
+    
+    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    if (parsedCommits.length === 0) {
+      // Simple extraction of commit info from markdown lines
+      // Example: * **feat(scope):** description (#123) (abcd123)
+      const lines = changelog.split('\n');
+      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      lines.forEach(line => {
+        const match = line.match(commitRegex);
+        if (match) {
+          parsedCommits.push({
+            type: match[1] || 'unknown',
+            scope: match[2] || '',
+            message: match[3] || '',
+            pr: match[4] ? `#${match[4]}` : '',
+            hash: match[5] || '',
+            author: ''
+          });
+        }
+      });
+      
+      if (parsedCommits.length > 0) {
+        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
+      } else {
+        console.log(`Couldn't extract commit info from changelog string 💅`);
+      }
+    }
+  } catch (error) {
+    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
+    parsedCommits = [];
+  }
+  
+  // Convert parsed commits to changelog entries
+  const entries = commitsToChangelogEntries(parsedCommits);
+  
+  // Ensure entries is an array before processing
+  if (!Array.isArray(entries)) {
+    console.log('Warning: entries is not an array in generateFileChangelog! 💅 Type:', typeof entries);
+    return `# Changelog\n\n## ${newVersion} (${new Date().toISOString().split('T')[0]})\n\nNo valid entries found.\n`;
+  }
   
   // Format entries as markdown list items
   const markdownContent = entries.map(entry => {
-    return `* **${entry.type}${entry.scope ? `(${entry.scope})` : ''}:** ${entry.description} ${entry.pr} ${entry.commit}`;
-  }).join('\n');
+    // Check if entry is valid
+    if (!entry || typeof entry !== 'object') {
+      console.log('Warning: Invalid entry in generateFileChangelog, skipping 💅', entry);
+      return null;
+    }
+    
+    // Use optional chaining and nullish coalescing to handle potentially undefined properties
+    const type = entry.type ?? 'unknown';
+    const scope = entry.scope ?? '';
+    const description = entry.description ?? 'No description';
+    const pr = entry.pr ?? '';
+    const commit = entry.commit ?? '';
+    
+    return `* **${type}${scope ? `(${scope})` : ''}:** ${description} ${pr} ${commit}`;
+  })
+  .filter(item => item !== null) // Remove any null entries
+  .join('\n');
   
   // Get today's date in YYYY-MM-DD format
   const today = new Date().toISOString().split('T')[0];

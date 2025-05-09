@@ -12,17 +12,25 @@ const {
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {String} newVersion - New version to be released
- * @param {Array} commits - Analyzed commits for the release
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} [updatedFiles] - List of files that were updated with version info
  */
-async function createOrUpdatePR(octokit, context, newVersion, commits, config, updatedFiles = []) {
+async function createOrUpdatePR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   console.log(`Creating/updating PR for version ${newVersion}...`);
   
+  // The changelog parameter is expected to be a string
+  // No type conversion needed as it should already be a string from generateChangelog
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog parameter is not a string! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
+  
   // Check if we're in a PR context and need to update an existing PR
   if (context.payload.pull_request) {
-    return await updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles);
+    return await updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles);
   }
   
   // Create a new staging branch and PR
@@ -551,7 +559,9 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
     }
     
     // Generate changelog content using our new function
-    changelogContent = generateFileChangelog(commits, newVersion, baseContent);
+    // Pass the changelog string directly to generateFileChangelog
+    // The function will handle parsing if needed
+    changelogContent = generateFileChangelog(changelog, newVersion, baseContent);
     
     console.log(`Prepared changelog content for ${newVersion} 📝`);
   }
@@ -674,7 +684,7 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
   const initialBody = `${config.pullRequestHeader || 'Release PR'}`;
   
   // Use the updatePRDescriptionWithChangelog function to add the changelog table
-  let body = updatePRDescriptionWithChangelog(initialBody, commits, config);
+  let body = updatePRDescriptionWithChangelog(initialBody, changelog, config);
   
   // Add a cute intro line
   body += `Time to freshen up our codebase with a fabulous new release! 💅✨\n\n`;
@@ -758,15 +768,23 @@ async function createOrUpdatePR(octokit, context, newVersion, commits, config, u
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context 
  * @param {String} newVersion - New version to be released
- * @param {Array} commits - Analyzed commits for the release
+ * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @param {Array} updatedFiles - List of files that were updated with version info
  */
-async function updateExistingPR(octokit, context, newVersion, commits, config, updatedFiles = []) {
+async function updateExistingPR(octokit, context, newVersion, changelog, config, updatedFiles = []) {
   const { owner, repo } = context.repo;
   const prNumber = context.payload.pull_request.number;
   
   console.log(`Updating existing PR #${prNumber} with new version ${newVersion}...`);
+  
+  // The changelog parameter is expected to be a string
+  // No type conversion needed as it should already be a string from generateChangelog
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog parameter is not a string in updateExistingPR! 💅 Type: ${typeof changelog}`);
+    // Convert to string if it's not already
+    changelog = String(changelog || '');
+  }
   
   // Get the PR branch
   const prBranch = context.payload.pull_request.head.ref;
@@ -813,7 +831,9 @@ async function updateExistingPR(octokit, context, newVersion, commits, config, u
     }
     
     // Generate changelog content using our new function
-    let changelogContent = generateFileChangelog(commits, newVersion, baseContent);
+    // Pass the changelog string directly to generateFileChangelog
+    // The function will handle parsing if needed
+    let changelogContent = generateFileChangelog(changelog, newVersion, baseContent);
     
     // Add changelog to files to commit
     filesToCommit.push({
@@ -881,7 +901,7 @@ async function updateExistingPR(octokit, context, newVersion, commits, config, u
   let body = pr.body || '';
   
   // Use the updatePRDescriptionWithChangelog function to update the changelog table
-  body = updatePRDescriptionWithChangelog(body, commits, config);
+  body = updatePRDescriptionWithChangelog(body, changelog, config);
   
   // Add updated list of files
   if (updatedFiles && updatedFiles.length > 0) {
