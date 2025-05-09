@@ -15,6 +15,7 @@ Release Boss is your new bestie for automating releases! She analyzes your conve
 
 - **Smart Version Bumping**: Automatically determines version bumps based on your conventional commits
 - **Customizable Changelog Generation**: Creates beautiful changelogs organized exactly how you want them
+- **PR-Based Changelog Tracking**: Maintains a structured changelog table in PR descriptions that's both machine-readable and human-editable
 - **Template-Based Version Updates**: Updates version references in your files with a straightforward template system
 - **PR Management**: Creates, updates, and tracks pull requests for your releases
 - **Flexible Configuration**: Adapts to your workflow with extensive configuration options
@@ -132,6 +133,26 @@ changelogSections:          # Commit types to include in changelog
     hidden: false
 
 changelogPath: CHANGELOG.md # Path to changelog file
+
+# PR-Based Changelog Table Configuration
+changelogTable:
+  enabled: true             # Enable the PR-based changelog table
+  markers:                  # HTML comment markers to identify the table
+    start: "<!-- RELEASE_BOSS_CHANGELOG_START -->"
+    end: "<!-- RELEASE_BOSS_CHANGELOG_END -->"
+  columns:                  # Table columns configuration
+    - name: "Type"
+      field: "type"
+    - name: "Scope"
+      field: "scope"
+    - name: "Description"
+      field: "description"
+    - name: "PR"
+      field: "pr"
+    - name: "Commit"
+      field: "commit"
+    - name: "Author"
+      field: "author"
 
 # Tagging Configuration
 versionTagPrefix: true      # Whether to prefix tags with 'v' (v1.0.0)

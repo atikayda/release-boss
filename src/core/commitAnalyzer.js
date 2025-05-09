@@ -2,6 +2,29 @@ const semver = require('semver');
 const conventionalCommitsParser = require('conventional-commits-parser');
 
 /**
+ * Convert commit objects to changelog entry objects
+ * @param {Array} commits - Array of parsed commits
+ * @returns {Array} - Array of changelog entries
+ */
+function commitsToChangelogEntries(commits) {
+  return commits.map(commit => {
+    // Extract PR number from commit message if available
+    const prMatch = commit.message.match(/#(\d+)/);
+    const prNumber = prMatch ? prMatch[1] : '';
+    const prRef = prNumber ? `#${prNumber}` : '';
+    
+    return {
+      type: commit.parsed.type || 'other',
+      scope: commit.parsed.scope || '',
+      description: commit.parsed.subject || commit.message.split('\n')[0],
+      pr: prRef,
+      commit: commit.hash.substring(0, 7),
+      author: commit.author ? `@${commit.author}` : ''
+    };
+  });
+}
+
+/**
  * Commit types that trigger a minor version bump (new features)
  */
 const MINOR_BUMP_TYPES = ['feat'];
@@ -22,23 +45,29 @@ const NO_BUMP_TYPES = ['docs', 'style', 'test', 'ci', 'build'];
 const EXCLUDED_TYPES = ['chore'];
 
 /**
- * Analyze commits between two branches to determine the type of version bump
+ * Analyze commits between two references (branches, commits, etc.)
  * @param {Object} octokit - GitHub API client
  * @param {Object} context - GitHub context
  * @param {Object} config - Release Boss configuration
+ * @param {String} baseRef - Base reference (default: config.releaseBranch)
+ * @param {String} headRef - Head reference (default: config.mergeBranch)
  * @returns {Array} - Array of parsed and analyzed commits
  */
-async function analyzeCommits(octokit, context, config) {
+async function analyzeCommits(octokit, context, config, baseRef, headRef) {
   const { owner, repo } = context.repo;
   
-  console.log(`Analyzing commits between ${config.releaseBranch} and ${config.mergeBranch}...`);
+  // Use provided refs or fall back to config values
+  const base = baseRef || config.releaseBranch;
+  const head = headRef || config.mergeBranch;
   
-  // Get commits between releaseBranch and mergeBranch
+  console.log(`Analyzing commits between ${base} and ${head}...`);
+  
+  // Get commits between base and head references
   const compareResponse = await octokit.rest.repos.compareCommits({
     owner,
     repo,
-    base: config.releaseBranch,
-    head: config.mergeBranch
+    base,
+    head
   });
   
   if (!compareResponse.data.commits || compareResponse.data.commits.length === 0) {
@@ -270,9 +299,41 @@ async function determineVersionBump(commits, octokit, context, config) {
   };
 }
 
+/**
+ * Find new commits since the last update
+ * @param {Object} octokit - GitHub API client
+ * @param {Object} context - GitHub context
+ * @param {String} lastCommitSha - SHA of the last processed commit
+ * @param {String} headRef - Reference to compare against (branch or commit)
+ * @returns {Array} - Array of new commits
+ */
+async function findNewCommitsSince(octokit, context, lastCommitSha, headRef) {
+  const { owner, repo } = context.repo;
+  
+  console.log(`Finding new commits since ${lastCommitSha.substring(0, 7)}...`);
+  
+  // Get commits between lastCommitSha and headRef
+  const compareResponse = await octokit.rest.repos.compareCommits({
+    owner,
+    repo,
+    base: lastCommitSha,
+    head: headRef
+  });
+  
+  if (!compareResponse.data.commits || compareResponse.data.commits.length === 0) {
+    console.log('No new commits found');
+    return [];
+  }
+  
+  console.log(`Found ${compareResponse.data.commits.length} new commits since ${lastCommitSha.substring(0, 7)} 💅`);
+  return compareResponse.data.commits;
+}
+
 module.exports = {
   analyzeCommits,
   determineVersionBump,
   getBumpTypeForCommit, // Exported for testing
-  isExcludedFromChangelog // Exported for testing
+  isExcludedFromChangelog, // Exported for testing
+  commitsToChangelogEntries, // Exported for changelog table generation
+  findNewCommitsSince // Exported for PR updates
 };

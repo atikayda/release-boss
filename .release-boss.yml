@@ -54,6 +54,51 @@ changelogSections:
   - type: docs
     section: "📝 Documentation Glow-Ups 📚"
     hidden: false
+    
+# PR-Based Changelog Table Configuration
+# ------------------------------------
+changelogTable:
+  enabled: true  # Enable the PR-based changelog table
+  
+  # HTML comment markers to identify the table
+  markers:
+    start: "<!-- RELEASE_BOSS_CHANGELOG_START -->"
+    end: "<!-- RELEASE_BOSS_CHANGELOG_END -->"
+    
+  # Table columns configuration
+  columns:
+    - name: "Type"
+      field: "type"
+    - name: "Scope"
+      field: "scope"
+    - name: "Description"
+      field: "description"
+    - name: "PR"
+      field: "pr"
+    - name: "Commit"
+      field: "commit"
+    - name: "Author"
+      field: "author"
+      
+  # Sorting options
+  sorting:
+    enabled: true
+    order: 
+      - feat
+      - fix
+      - perf
+      - refactor
+      - docs
+      - test
+      - ci
+      - build
+      - chore
+    
+  # Filtering options
+  filtering:
+    excludeTypes: 
+      - chore  # Commit types to exclude from changelog table
+    requireScope: false       # Whether to require a scope for all entries
 
 # Tagging Configuration
 # -------------------
