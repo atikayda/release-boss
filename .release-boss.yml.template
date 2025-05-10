@@ -52,22 +52,72 @@ updateFiles: []
 
 # Changelog Configuration
 # ---------------------
-# How to generate and format the changelog
-changelogPath: CHANGELOG.md  # Where to write the changelog
+# How to format and organize your changelog
+changelogPath: CHANGELOG.md  # Where to write the changelog file
 
 # Customize how different commit types appear in the changelog
 changelogSections:
-  - type: feat     # Commit type (from conventional commits)
-    section: "✨ Fabulous New Features ✨"  # Section heading in changelog
-    hidden: false  # Whether to hide this section
+  - type: feat
+    section: "✨ Features"
+    hidden: false  # Include in changelog
   
   - type: fix
-    section: "🛠️ Bug Fixes & Polish 💅"
-    hidden: false
+    section: "🐛 Bug Fixes"
+    hidden: false  # Include in changelog
     
   - type: perf
     section: "⚡ Performance Improvements"
-    hidden: false
+    hidden: false  # Include in changelog
+    
+  - type: docs
+    section: "📝 Documentation"
+    hidden: true   # Skip in changelog
+
+# PR-Based Changelog Table Configuration
+# ------------------------------------
+# Configuration for the PR description changelog table
+changelogTable:
+  enabled: true  # Enable the PR-based changelog table
+  
+  # HTML comment markers to identify the table
+  markers:
+    start: "<!-- RELEASE_BOSS_CHANGELOG_START -->"
+    end: "<!-- RELEASE_BOSS_CHANGELOG_END -->"
+    
+  # Table columns configuration
+  columns:
+    - name: "Type"
+      field: "type"
+    - name: "Scope"
+      field: "scope"
+    - name: "Description"
+      field: "description"
+    - name: "PR"
+      field: "pr"
+    - name: "Commit"
+      field: "commit"
+    - name: "Author"
+      field: "author"
+      
+  # Sorting options
+  sorting:
+    enabled: true
+    order: 
+      - feat
+      - fix
+      - perf
+      - refactor
+      - docs
+      - test
+      - ci
+      - build
+      - chore
+    
+  # Filtering options
+  filtering:
+    excludeTypes: 
+      - chore  # Commit types to exclude from changelog table
+    requireScope: false       # Whether to require a scope for all entries
 
 # Tagging Configuration
 # -------------------

@@ -18,7 +18,40 @@ const DEFAULT_CONFIG = {
     { type: 'fix', section: 'Bug Fixes', hidden: false },
     { type: 'perf', section: 'Performance Improvements', hidden: false }
   ],
-  changelogPath: 'CHANGELOG.md'
+  changelogPath: 'CHANGELOG.md',
+  // Changelog table configuration for PR-based tracking
+  changelogTable: {
+    enabled: true,
+    // Table format options
+    columns: [
+      { name: "Type", field: "type" },
+      { name: "Scope", field: "scope" },
+      { name: "Description", field: "description" },
+      { name: "PR", field: "pr" },
+      { name: "Commit", field: "commit" },
+      { name: "Author", field: "author" }
+    ],
+    // HTML comment markers to identify the changelog table
+    markers: {
+      start: "<!-- RELEASE_BOSS_CHANGELOG_START -->",
+      end: "<!-- RELEASE_BOSS_CHANGELOG_END -->"
+    },
+    // Sorting options
+    sorting: {
+      enabled: true,
+      order: ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'ci', 'build', 'chore']
+    },
+    // Filtering options
+    filtering: {
+      excludeTypes: ['chore'],  // Commit types to exclude from changelog table
+      requireScope: false       // Whether to require a scope for all entries
+    },
+    // Placement options
+    placement: {
+      afterHeader: true,        // Place table after PR header
+      beforeBody: false         // Place table before PR body
+    }
+  }
 };
 
 /**
@@ -112,6 +145,44 @@ function validateConfig(config) {
   
   if (config.versionFiles && !Array.isArray(config.versionFiles)) {
     throw new Error('versionFiles must be an array');
+  }
+  
+  // Validate changelog table config if enabled
+  if (config.changelogTable) {
+    // If not explicitly disabled, ensure it has the required properties
+    if (config.changelogTable.enabled !== false) {
+      // Set default values if not provided
+      if (!config.changelogTable.columns || !Array.isArray(config.changelogTable.columns)) {
+        config.changelogTable.columns = DEFAULT_CONFIG.changelogTable.columns;
+      }
+      
+      if (!config.changelogTable.markers) {
+        config.changelogTable.markers = DEFAULT_CONFIG.changelogTable.markers;
+      }
+      
+      // Validate and set default sorting options
+      if (!config.changelogTable.sorting) {
+        config.changelogTable.sorting = DEFAULT_CONFIG.changelogTable.sorting;
+      } else if (config.changelogTable.sorting.enabled !== false && 
+                (!config.changelogTable.sorting.order || !Array.isArray(config.changelogTable.sorting.order))) {
+        config.changelogTable.sorting.order = DEFAULT_CONFIG.changelogTable.sorting.order;
+      }
+      
+      // Validate and set default filtering options
+      if (!config.changelogTable.filtering) {
+        config.changelogTable.filtering = DEFAULT_CONFIG.changelogTable.filtering;
+      }
+      
+      // Validate and set default placement options
+      if (!config.changelogTable.placement) {
+        config.changelogTable.placement = DEFAULT_CONFIG.changelogTable.placement;
+      }
+      
+      console.log(`Changelog table configuration validated and ready to slay! 💅`);
+    }
+  } else {
+    // Add default changelog table config
+    config.changelogTable = DEFAULT_CONFIG.changelogTable;
   }
   
   // Validate changelog sections
