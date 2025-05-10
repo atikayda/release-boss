@@ -3,6 +3,9 @@
  * Handles generating and updating changelog tables in PR descriptions
  */
 
+// Import the conventional-commits-parser for robust parsing
+const conventionalCommitsParser = require('conventional-commits-parser');
+
 /**
  * Generate a changelog table from commits
  * @param {Array} commits - Array of analyzed commits
@@ -237,8 +240,23 @@ function mergeChangelogEntries(existingEntries, newEntries) {
     entriesMap.set(entry.commit, entry);
   });
   
-  // Convert back to array and sort by type (features first, then fixes, etc.)
-  return Array.from(entriesMap.values()).sort((a, b) => {
+  // Convert map back to array
+  const result = Array.from(entriesMap.values());
+  
+  // If we couldn't extract any valid entries, add a fallback entry
+  if (result.length === 0) {
+    console.log('No valid entries in mergeChangelogEntries, adding fallback entry 💅');
+    result.push({
+      type: 'chore',
+      scope: 'release',
+      description: 'Version bump',
+      pr: '',
+      commit: 'fallback',
+      author: ''
+    });
+  }
+  
+  return result.sort((a, b) => {
     const typeOrder = { feat: 1, fix: 2, perf: 3, refactor: 4, docs: 5 };
     return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
   });
@@ -254,7 +272,14 @@ function mergeChangelogEntries(existingEntries, newEntries) {
 function updatePRDescriptionWithChangelog(description, changelog, config) {
   // Extract existing changelog table if it exists
   const existingTable = extractChangelogTable(description || '', config);
-  const existingEntries = parseChangelogTable(existingTable);
+  
+  // Ensure existingTable is a string before parsing
+  let existingEntries = [];
+  if (existingTable !== null && typeof existingTable === 'string') {
+    existingEntries = parseChangelogTable(existingTable);
+  } else {
+    console.log('No existing table found or table is not a string, starting with empty entries 💅');
+  }
   
   // The changelog parameter is expected to be a string
   // We need to convert it to an array of entries for the table
@@ -280,29 +305,65 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
       }
     }
     
-    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    // If we couldn't parse as JSON, try to extract commit info using conventional-commits-parser
     if (parsedCommits.length === 0) {
-      // Simple extraction of commit info from markdown lines
-      // Example: * **feat(scope):** description (#123) (abcd123)
+      console.log(`Attempting to parse changelog with conventional-commits-parser 💅`);
+      
+      // Split the changelog into lines and process each line
       const lines = changelog.split('\n');
-      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      // Log the first few lines for debugging
+      if (lines.length > 0) {
+        console.log(`First line of changelog: "${lines[0]}" 💁‍♀️`);
+      }
       
       lines.forEach(line => {
-        const match = line.match(commitRegex);
-        if (match) {
-          parsedCommits.push({
-            type: match[1] || 'unknown',
-            scope: match[2] || '',
-            message: match[3] || '',
-            pr: match[4] ? `#${match[4]}` : '',
-            hash: match[5] || '',
-            author: ''
+        // Skip empty lines
+        if (!line.trim()) return;
+        
+        try {
+          // Clean up the line if it's in markdown format
+          let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
+          
+          // Parse with conventional-commits-parser
+          const parsed = conventionalCommitsParser.sync(cleanLine, {
+            headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+            headerCorrespondence: ['type', 'scope', 'subject'],
+            noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+            revertPattern: /^revert:\s([\s\S]*?)/,
+            revertCorrespondence: ['header'],
+            issuePrefixes: ['#']
           });
+          
+          if (parsed && parsed.type) {
+            console.log(`Successfully parsed commit: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+            
+            // Extract PR number if present
+            const prMatch = cleanLine.match(/#(\d+)/);
+            const prRef = prMatch ? `#${prMatch[1]}` : '';
+            
+            // Extract commit hash if present
+            const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
+            const hash = hashMatch ? hashMatch[1] : '';
+            
+            parsedCommits.push({
+              type: parsed.type,
+              scope: parsed.scope || '',
+              message: parsed.subject || cleanLine,
+              pr: prRef,
+              hash: hash,
+              author: ''
+            });
+          } else {
+            console.log(`Failed to parse line as conventional commit: "${line}" 💅`);
+          }
+        } catch (parseError) {
+          console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
         }
       });
       
       if (parsedCommits.length > 0) {
-        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
+        console.log(`Extracted ${parsedCommits.length} commits using conventional-commits-parser 💁‍♀️`);
       } else {
         console.log(`Couldn't extract commit info from changelog string 💅`);
       }
@@ -314,6 +375,19 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
   
   // Generate new changelog entries from parsed commits
   const newEntries = commitsToChangelogEntries(parsedCommits);
+  
+  // If we couldn't extract any valid entries, add a fallback entry
+  if (parsedCommits.length === 0) {
+    console.log('No valid entries extracted, adding fallback entry 💅');
+    parsedCommits.push({
+      type: 'chore',
+      scope: 'release',
+      description: 'Version bump',
+      pr: '',
+      hash: 'fallback',
+      author: ''
+    });
+  }
   
   // Merge entries
   const mergedEntries = mergeChangelogEntries(existingEntries, newEntries);
@@ -412,6 +486,19 @@ function generateFileChangelog(changelog, newVersion, baseContent = '') {
   if (!Array.isArray(entries)) {
     console.log('Warning: entries is not an array in generateFileChangelog! 💅 Type:', typeof entries);
     return `# Changelog\n\n## ${newVersion} (${new Date().toISOString().split('T')[0]})\n\nNo valid entries found.\n`;
+  }
+  
+  // If we couldn't extract any valid entries, add a fallback entry
+  if (entries.length === 0) {
+    console.log('No valid entries extracted in generateFileChangelog, adding fallback entry 💁‍♀️');
+    entries.push({
+      type: 'chore',
+      scope: 'release',
+      description: 'Version bump',
+      pr: '',
+      commit: 'fallback',
+      author: ''
+    });
   }
   
   // Format entries as markdown list items
