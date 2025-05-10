@@ -12,39 +12,24 @@ const conventionalCommitsParser = require('conventional-commits-parser');
  * @param {Object} config - Release Boss configuration
  * @returns {String} - Markdown table with changelog entries
  */
-function generateChangelogTable(commits, config) {
-  // Check if config is valid
-  if (!config || typeof config !== 'object') {
-    console.log('Warning: config is not a valid object! 💁‍♀️ Using default markers.');
-    config = {}; // Use empty object to avoid errors
+function generateChangelogTable(commits, config = {}) {
+  // Ensure commits is an array
+  if (!Array.isArray(commits)) {
+    console.log('Warning: commits is not an array in generateChangelogTable! 💅 Type:', typeof commits);
+    commits = [];
   }
   
   // Get marker configuration
   const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
   const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
   
-  // Ensure commits is an array before processing
-  if (!Array.isArray(commits)) {
-    console.log('Warning: commits is not an array in generateChangelogTable! 💅 Type:', typeof commits);
-    commits = []; // Set to empty array to avoid errors
-  }
-  
-  // Convert commits to changelog entries
-  const entries = commitsToChangelogEntries(commits);
-  
-  // Ensure entries is an array
-  if (!Array.isArray(entries)) {
-    console.log('Warning: entries is not an array after conversion! 💁‍♀️ Type:', typeof entries);
-    return `${startMarker}\n\n${endMarker}`; // Return empty table
-  }
-  
   // Generate table header
   const header = '| Type | Scope | Description | PR | Commit | Author |';
   const separator = '|------|-------|-------------|----|---------| ------|';
   
   // Generate table rows
-  const rows = entries.map(entry => {
-    // Check if entry is valid
+  const rows = commits.map(entry => {
+    // Skip invalid entries
     if (!entry || typeof entry !== 'object') {
       console.log('Warning: Invalid entry in entries, skipping 💅', entry);
       return null;
@@ -64,12 +49,12 @@ function generateChangelogTable(commits, config) {
 }
 
 /**
- * Convert commit objects to changelog entries
- * @param {Array} commits - Array of parsed commits
+ * Convert commits to changelog entries
+ * @param {Array} commits - Array of analyzed commits
  * @returns {Array} - Array of changelog entries
  */
 function commitsToChangelogEntries(commits) {
-  // Ensure commits is an array before using map
+  // Ensure commits is an array
   if (!Array.isArray(commits)) {
     console.log('Warning: commits is not an array! 💅 Type:', typeof commits);
     return [];
@@ -89,32 +74,59 @@ function commitsToChangelogEntries(commits) {
     }
     
     // Check if commit has message property
-    if (!commit.message) {
-      console.log('Warning: commit object has no message property! 💅', commit);
+    if (!commit.message && !commit.subject) {
+      console.log('Warning: commit object has no message or subject property! 💅', commit);
       return {
-        type: 'unknown',
-        scope: '',
+        type: commit.type || 'unknown',
+        scope: commit.scope || '',
         description: 'No description available',
         pr: '',
-        commit: commit.hash ? commit.hash.substring(0, 7) : '',
-        author: ''
+        commit: commit.hash || commit.commit || '',
+        author: commit.author || ''
       };
     }
     
     // Extract PR number from commit message if available
-    const prMatch = commit.message.match(/#(\d+)/);
+    const message = commit.message || commit.subject || '';
+    const prMatch = message.match(/#(\d+)/);
     const prNumber = prMatch ? prMatch[1] : '';
     const prRef = prNumber ? `#${prNumber}` : '';
     
-    // Check if commit has parsed property before accessing its properties
-    const parsed = commit.parsed || {};
+    // If we have a raw commit with a message but no parsed type, try to parse it
+    if (!commit.type && message) {
+      try {
+        // Parse with conventional-commits-parser
+        const parsed = conventionalCommitsParser.sync(message, {
+          headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+          headerCorrespondence: ['type', 'scope', 'subject'],
+          noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+          revertPattern: /^revert:\s([\s\S]*?)/,
+          revertCorrespondence: ['header'],
+          issuePrefixes: ['#']
+        });
+        
+        if (parsed && parsed.type) {
+          console.log(`Parsed commit message: type=${parsed.type}, subject=${parsed.subject || ''} 💅`);
+          return {
+            type: parsed.type,
+            scope: parsed.scope || '',
+            description: parsed.subject || message.split('\n')[0],
+            pr: prRef || commit.pr || '',
+            commit: commit.hash || commit.commit || '',
+            author: commit.author ? `@${commit.author}` : ''
+          };
+        }
+      } catch (error) {
+        console.log(`Error parsing commit message: ${error.message} 💁‍♀️`);
+      }
+    }
     
     return {
-      type: parsed.type || 'other',
-      scope: parsed.scope || '',
-      description: parsed.subject || commit.message.split('\n')[0],
-      pr: prRef,
-      commit: commit.hash ? commit.hash.substring(0, 7) : '',
+      type: commit.type || 'other',
+      scope: commit.scope || '',
+      description: commit.subject || (commit.message ? commit.message.split('\n')[0] : ''),
+      pr: prRef || commit.pr || '',
+      commit: commit.hash || commit.commit || '',
       author: commit.author ? `@${commit.author}` : ''
     };
   });
@@ -126,23 +138,18 @@ function commitsToChangelogEntries(commits) {
  * @param {Object} config - Release Boss configuration
  * @returns {String|null} - Extracted table or null if not found
  */
-function extractChangelogTable(description, config) {
+function extractChangelogTable(description, config = {}) {
   // Check if description is valid
   if (!description || typeof description !== 'string') {
     console.log('Warning: PR description is not a valid string! 💅 Type:', typeof description);
     return null;
   }
   
-  // Check if config is valid
-  if (!config || typeof config !== 'object') {
-    console.log('Warning: config is not a valid object! 💁‍♀️ Using default markers.');
-    config = {}; // Use empty object to avoid errors
-  }
-  
   const startMarker = config.changelogTable?.markers?.start || '<!-- RELEASE_BOSS_CHANGELOG_START -->';
   const endMarker = config.changelogTable?.markers?.end || '<!-- RELEASE_BOSS_CHANGELOG_END -->';
   
   try {
+    // Simple regex to extract content between markers
     const tableRegex = new RegExp(`${startMarker}([\\s\\S]*?)${endMarker}`);
     const match = description.match(tableRegex);
     return match ? match[1].trim() : null;
@@ -153,8 +160,8 @@ function extractChangelogTable(description, config) {
 }
 
 /**
- * Parse changelog table into structured data
- * @param {String} tableContent - Markdown table content
+ * Parse changelog table into entries
+ * @param {String} tableContent - Changelog table content
  * @returns {Array} - Array of changelog entries
  */
 function parseChangelogTable(tableContent) {
@@ -171,12 +178,6 @@ function parseChangelogTable(tableContent) {
   }
   
   const dataRows = lines.slice(2); // Skip header and separator rows
-  
-  // Make sure dataRows is an array before mapping
-  if (!Array.isArray(dataRows)) {
-    console.log('Warning: dataRows is not an array! 💅 Type:', typeof dataRows);
-    return [];
-  }
   
   return dataRows.map(row => {
     if (typeof row !== 'string') {
@@ -203,9 +204,9 @@ function parseChangelogTable(tableContent) {
 }
 
 /**
- * Merge new entries into existing changelog entries
+ * Merge existing and new changelog entries
  * @param {Array} existingEntries - Existing changelog entries
- * @param {Array} newEntries - New changelog entries to add
+ * @param {Array} newEntries - New changelog entries
  * @returns {Array} - Merged entries
  */
 function mergeChangelogEntries(existingEntries, newEntries) {
@@ -216,28 +217,35 @@ function mergeChangelogEntries(existingEntries, newEntries) {
   }
   
   if (!Array.isArray(newEntries)) {
-    console.log('Warning: newEntries is not an array! 💁‍♀️ Type:', typeof newEntries);
+    console.log('Warning: newEntries is not an array! 👱‍♀️ Type:', typeof newEntries);
     newEntries = [];
   }
   
-  // Create a map of existing entries by commit hash to avoid duplicates
+  // Create a map of existing entries by commit hash or description to avoid duplicates
   const entriesMap = new Map();
+  let entryCounter = 0;
   
   existingEntries.forEach(entry => {
-    if (!entry || typeof entry !== 'object' || !entry.commit) {
+    if (!entry || typeof entry !== 'object') {
       console.log('Warning: Invalid entry in existingEntries, skipping 💅', entry);
       return;
     }
-    entriesMap.set(entry.commit, entry);
+    
+    // Use commit as key if available, otherwise use description + type or a counter
+    const key = entry.commit || `${entry.type}-${entry.description}-${entryCounter++}`;
+    entriesMap.set(key, entry);
   });
   
   // Add new entries, overwriting if they already exist
   newEntries.forEach(entry => {
-    if (!entry || typeof entry !== 'object' || !entry.commit) {
-      console.log('Warning: Invalid entry in newEntries, skipping 💁‍♀️', entry);
+    if (!entry || typeof entry !== 'object') {
+      console.log('Warning: Invalid entry in newEntries, skipping 👱‍♀️', entry);
       return;
     }
-    entriesMap.set(entry.commit, entry);
+    
+    // Use commit as key if available, otherwise use description + type or a counter
+    const key = entry.commit || `${entry.type}-${entry.description}-${entryCounter++}`;
+    entriesMap.set(key, entry);
   });
   
   // Convert map back to array
@@ -263,17 +271,156 @@ function mergeChangelogEntries(existingEntries, newEntries) {
 }
 
 /**
+ * Parse a changelog string into commit objects using conventional-commits-parser
+ * @param {String} changelog - Changelog string to parse
+ * @returns {Array} - Array of parsed commit objects
+ */
+function parseChangelogString(changelog) {
+  // Ensure changelog is a string
+  if (typeof changelog !== 'string') {
+    console.log(`Warning: changelog is not a string! 💅 Type: ${typeof changelog}`);
+    changelog = String(changelog || '');
+  }
+  
+  let parsedCommits = [];
+  
+  try {
+    // First check if it's a JSON string of commits
+    if (changelog.trim().startsWith('[')) {
+      try {
+        parsedCommits = JSON.parse(changelog);
+        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
+        return parsedCommits;
+      } catch (jsonError) {
+        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
+        // Continue with other parsing methods
+      }
+    }
+    
+    // Split the changelog into lines
+    const lines = changelog.split('\n');
+    
+    // Log the first line for debugging
+    if (lines.length > 0) {
+      console.log(`First line of changelog: "${lines[0]}" 💁‍♀️`);
+    }
+    
+    // Process each line
+    lines.forEach(line => {
+      // Skip empty lines and section headers
+      if (!line.trim() || line.trim().startsWith('#')) {
+        return;
+      }
+      
+      try {
+        // Extract commit info from markdown-formatted line
+        // This is a simple extraction to get the commit message without markdown formatting
+        let commitMessage = line;
+        
+        // If line starts with bullet point and has markdown formatting, clean it up
+        if (line.startsWith('*')) {
+          // Remove bullet point and any markdown formatting
+          commitMessage = line.replace(/^\s*\*\s+/, '').replace(/\*\*/g, '');
+        }
+        
+        // Extract hash if present
+        let hash = '';
+        const hashMatch = line.match(/\[([a-f0-9]+)\]|\(([a-f0-9]+)\)/);
+        if (hashMatch) {
+          hash = hashMatch[1] || hashMatch[2] || '';
+        }
+        
+        // Parse with conventional-commits-parser
+        const parsed = conventionalCommitsParser.sync(commitMessage, {
+          headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+          headerCorrespondence: ['type', 'scope', 'subject'],
+          noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+          revertPattern: /^revert:\s([\s\S]*?)/,
+          revertCorrespondence: ['header'],
+          issuePrefixes: ['#']
+        });
+        
+        // Extract PR number if present
+        const prMatch = line.match(/#(\d+)/);
+        const prRef = prMatch ? `#${prMatch[1]}` : '';
+        
+        if (parsed && parsed.type) {
+          console.log(`Successfully parsed commit: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+          
+          parsedCommits.push({
+            type: parsed.type,
+            scope: parsed.scope || '',
+            message: parsed.subject || commitMessage,
+            subject: parsed.subject || commitMessage,
+            pr: prRef,
+            hash: hash,
+            author: ''
+          });
+        } else {
+          // If parsing fails, try to guess the type from the message
+          console.log(`Failed to parse as conventional commit, using fallback: "${commitMessage}" 💅`);
+          
+          let type = 'chore';
+          if (commitMessage.includes('fix') || commitMessage.includes('bug')) type = 'fix';
+          if (commitMessage.includes('feat') || commitMessage.includes('add')) type = 'feat';
+          if (commitMessage.startsWith('✨')) type = 'feat';
+          
+          parsedCommits.push({
+            type: type,
+            scope: '',
+            message: commitMessage,
+            subject: commitMessage,
+            pr: prRef,
+            hash: hash,
+            author: ''
+          });
+        }
+      } catch (parseError) {
+        console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
+      }
+    });
+    
+    // Add fallback entry if no commits were parsed
+    if (parsedCommits.length === 0) {
+      console.log('No commits parsed, adding fallback entry 💅');
+      parsedCommits.push({
+        type: 'chore',
+        scope: 'release',
+        message: 'Version bump',
+        pr: '',
+        hash: 'fallback',
+        author: ''
+      });
+    }
+    
+    return parsedCommits;
+  } catch (error) {
+    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
+    
+    // Return fallback entry
+    return [{
+      type: 'chore',
+      scope: 'release',
+      message: 'Version bump',
+      pr: '',
+      hash: 'fallback',
+      author: ''
+    }];
+  }
+}
+
+/**
  * Update PR description with changelog table
  * @param {String} description - Existing PR description
  * @param {String} changelog - Changelog content for the release
  * @param {Object} config - Release Boss configuration
  * @returns {String} - Updated PR description
  */
-function updatePRDescriptionWithChangelog(description, changelog, config) {
+function updatePRDescriptionWithChangelog(description, changelog, config = {}) {
   // Extract existing changelog table if it exists
   const existingTable = extractChangelogTable(description || '', config);
   
-  // Ensure existingTable is a string before parsing
+  // Parse existing table into entries
   let existingEntries = [];
   if (existingTable !== null && typeof existingTable === 'string') {
     existingEntries = parseChangelogTable(existingTable);
@@ -281,147 +428,11 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
     console.log('No existing table found or table is not a string, starting with empty entries 💅');
   }
   
-  // The changelog parameter is expected to be a string
-  // We need to convert it to an array of entries for the table
-  let parsedCommits = [];
+  // Parse changelog string into commit objects
+  const parsedCommits = parseChangelogString(changelog);
   
-  if (typeof changelog !== 'string') {
-    console.log(`Warning: changelog is not a string in updatePRDescriptionWithChangelog! 💅 Type: ${typeof changelog}`);
-    // Convert to string if it's not already
-    changelog = String(changelog || '');
-  }
-  
-  // Try to extract structured data from the changelog string
-  // Look for patterns that might indicate commit information
-  try {
-    // First check if it's a JSON string of commits
-    if (changelog.trim().startsWith('[')) {
-      try {
-        parsedCommits = JSON.parse(changelog);
-        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
-      } catch (jsonError) {
-        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
-        // Not JSON, continue with other parsing methods
-      }
-    }
-    
-    // If we couldn't parse as JSON, try to extract commit info from the formatted changelog
-    if (parsedCommits.length === 0) {
-      console.log(`Attempting to parse formatted changelog 💅`);
-      
-      // Split the changelog into lines and process each line
-      const lines = changelog.split('\n');
-      
-      // Log the first few lines for debugging
-      if (lines.length > 0) {
-        console.log(`First line of changelog: "${lines[0]}" 💁‍♀️`);
-      }
-      
-      lines.forEach(line => {
-        // Skip empty lines or section headers (lines starting with #)
-        if (!line.trim() || line.trim().startsWith('#')) {
-          return;
-        }
-        
-        try {
-          // Look for markdown-formatted commit lines
-          // Example: * **feat(scope):** description (#123) (abcd123)
-          // or: * **changelog:** implement PR-based changelog tracking system ([6b515af](...))
-          const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+\(\[([a-f0-9]+)\]|\s+\(([a-f0-9]+)\))?/;
-          const match = line.match(commitRegex);
-          
-          if (match) {
-            // Extract the type, scope, and message
-            const type = match[1]?.trim();
-            const scope = match[2]?.trim() || '';
-            const message = match[3]?.trim() || '';
-            
-            // Extract commit hash (could be in different formats)
-            const hash = match[4] || match[5] || '';
-            
-            // Extract PR number if present
-            const prMatch = line.match(/#(\d+)/);
-            const prRef = prMatch ? `#${prMatch[1]}` : '';
-            
-            console.log(`Successfully extracted commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
-            
-            parsedCommits.push({
-              type: type,
-              scope: scope,
-              message: message,
-              pr: prRef,
-              hash: hash,
-              author: ''
-            });
-          } else {
-            // If the regex didn't match, try using conventional-commits-parser as a fallback
-            // Clean up the line if it's in markdown format
-            let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
-            
-            // Parse with conventional-commits-parser
-            const parsed = conventionalCommitsParser.sync(cleanLine, {
-              headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
-              headerCorrespondence: ['type', 'scope', 'subject'],
-              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
-              revertPattern: /^revert:\s([\s\S]*?)/,
-              revertCorrespondence: ['header'],
-              issuePrefixes: ['#']
-            });
-            
-            if (parsed && parsed.type) {
-              console.log(`Successfully parsed commit with library: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
-              
-              // Extract PR number if present
-              const prMatch = cleanLine.match(/#(\d+)/);
-              const prRef = prMatch ? `#${prMatch[1]}` : '';
-              
-              // Extract commit hash if present
-              const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
-              const hash = hashMatch ? hashMatch[1] : '';
-              
-              parsedCommits.push({
-                type: parsed.type,
-                scope: parsed.scope || '',
-                message: parsed.subject || cleanLine,
-                pr: prRef,
-                hash: hash,
-                author: ''
-              });
-            } else {
-              console.log(`Failed to parse line: "${line}" 💅`);
-            }
-          }
-        } catch (parseError) {
-          console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
-        }
-      });
-      
-      if (parsedCommits.length > 0) {
-        console.log(`Extracted ${parsedCommits.length} commits using conventional-commits-parser 💁‍♀️`);
-      } else {
-        console.log(`Couldn't extract commit info from changelog string 💅`);
-      }
-    }
-  } catch (error) {
-    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
-    parsedCommits = [];
-  }
-  
-  // Generate new changelog entries from parsed commits
+  // Convert parsed commits to changelog entries
   const newEntries = commitsToChangelogEntries(parsedCommits);
-  
-  // If we couldn't extract any valid entries, add a fallback entry
-  if (parsedCommits.length === 0) {
-    console.log('No valid entries extracted, adding fallback entry 💅');
-    parsedCommits.push({
-      type: 'chore',
-      scope: 'release',
-      description: 'Version bump',
-      pr: '',
-      hash: 'fallback',
-      author: ''
-    });
-  }
   
   // Merge entries
   const mergedEntries = mergeChangelogEntries(existingEntries, newEntries);
@@ -457,223 +468,11 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
  * @returns {String} - Generated changelog content
  */
 function generateFileChangelog(changelog, newVersion, baseContent = '') {
-  // The changelog parameter is expected to be a string
-  // We need to convert it to an array of entries for the file-based changelog
-  let parsedCommits = [];
-  
-  if (typeof changelog !== 'string') {
-    console.log('Warning: changelog is not a string in generateFileChangelog! 💅 Type:', typeof changelog);
-    // Convert to string if it's not already
-    changelog = String(changelog || '');
-  }
-  
-  // Try to extract structured data from the changelog string
-  // Look for patterns that might indicate commit information
-  try {
-    // First check if it's a JSON string of commits
-    if (changelog.trim().startsWith('[')) {
-      try {
-        parsedCommits = JSON.parse(changelog);
-        console.log(`Successfully parsed changelog string into an array with ${parsedCommits.length} items 💁‍♀️`);
-      } catch (jsonError) {
-        console.log(`Not a valid JSON string: ${jsonError.message} 💅`);
-        // Not JSON, continue with other parsing methods
-      }
-    }
-    
-    // If we couldn't parse as JSON, try to extract commit info from the formatted changelog
-    if (parsedCommits.length === 0) {
-      console.log(`Attempting to parse formatted changelog 💅`);
-      
-      // Split the changelog into lines and process each line
-      const lines = changelog.split('\n');
-      
-      // Log the first few lines for debugging
-      if (lines.length > 0) {
-        console.log(`First line of changelog: "${lines[0]}" 💁‍♀️`);
-      }
-      
-      lines.forEach(line => {
-        // Skip empty lines or section headers (lines starting with #)
-        if (!line.trim() || line.trim().startsWith('#')) {
-          return;
-        }
-        
-        try {
-          // Try both conventional and non-conventional formats
-          // First, try conventional format (with ** and type/scope)
-          const conventionalRegex = /^\*\s+\*\*([^\(]+)(?:\(([^\)]+)\))?:\*\*\s+(.+?)\s+\(\[([a-f0-9]+)\]/;
-          // For non-conventional format (without ** and type/scope)
-          const nonConventionalRegex = /^\*\s+([^\[\(]+)\s+\(\[([a-f0-9]+)\]/;
-          
-          // Try conventional format first
-          let match = line.match(conventionalRegex);
-          if (match) {
-            // Extract the type, scope, and message
-            const type = match[1]?.trim();
-            const scope = match[2]?.trim() || '';
-            const message = match[3]?.trim() || '';
-            const hash = match[4] || '';
-            
-            // Extract PR number if present
-            const prMatch = line.match(/#(\d+)/);
-            const prRef = prMatch ? `#${prMatch[1]}` : '';
-            
-            console.log(`Successfully extracted conventional commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
-            
-            parsedCommits.push({
-              type: type,
-              scope: scope,
-              message: message,
-              pr: prRef,
-              hash: hash,
-              author: ''
-            });
-          } 
-          // If conventional format fails, try non-conventional format
-          else {
-            match = line.match(nonConventionalRegex);
-            if (match) {
-              const message = match[1]?.trim();
-              const hash = match[2] || '';
-              
-              // Try to extract type and scope from message using conventional-commits-parser
-              try {
-                const parsed = conventionalCommitsParser.sync(message, {
-                  headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
-                  headerCorrespondence: ['type', 'scope', 'subject'],
-                  noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
-                  revertPattern: /^revert:\s([\s\S]*?)/,
-                  revertCorrespondence: ['header'],
-                  issuePrefixes: ['#']
-                });
-                
-                // Extract PR number if present
-                const prMatch = line.match(/#(\d+)/);
-                const prRef = prMatch ? `#${prMatch[1]}` : '';
-                
-                if (parsed && parsed.type) {
-                  console.log(`Successfully extracted non-conventional commit with parser: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
-                  
-                  parsedCommits.push({
-                    type: parsed.type,
-                    scope: parsed.scope || '',
-                    message: parsed.subject || message,
-                    pr: prRef,
-                    hash: hash,
-                    author: ''
-                  });
-                } else {
-                  // If parsing fails, use a default type
-                  console.log(`Successfully extracted non-conventional commit: message=${message} 💁‍♀️`);
-                  
-                  // Try to guess the type from the message
-                  let type = 'chore';
-                  if (message.includes('fix') || message.includes('bug')) type = 'fix';
-                  if (message.includes('feat') || message.includes('add')) type = 'feat';
-                  
-                  parsedCommits.push({
-                    type: type,
-                    scope: '',
-                    message: message,
-                    pr: prRef,
-                    hash: hash,
-                    author: ''
-                  });
-                }
-              } catch (parseError) {
-                console.log(`Error parsing non-conventional commit: ${parseError.message} 💅`);
-                
-                // Extract PR number if present
-                const prMatch = line.match(/#(\d+)/);
-                const prRef = prMatch ? `#${prMatch[1]}` : '';
-                
-                // Add with default type
-                parsedCommits.push({
-                  type: 'chore',
-                  scope: '',
-                  message: message,
-                  pr: prRef,
-                  hash: hash,
-                  author: ''
-                });
-              }
-            }
-          } else {
-            // If the regex didn't match, try using conventional-commits-parser as a fallback
-            // Clean up the line if it's in markdown format
-            let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
-            
-            // Parse with conventional-commits-parser
-            const parsed = conventionalCommitsParser.sync(cleanLine, {
-              headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
-              headerCorrespondence: ['type', 'scope', 'subject'],
-              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
-              revertPattern: /^revert:\s([\s\S]*?)/,
-              revertCorrespondence: ['header'],
-              issuePrefixes: ['#']
-            });
-            
-            if (parsed && parsed.type) {
-              console.log(`Successfully parsed commit with library: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
-              
-              // Extract PR number if present
-              const prMatch = cleanLine.match(/#(\d+)/);
-              const prRef = prMatch ? `#${prMatch[1]}` : '';
-              
-              // Extract commit hash if present
-              const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
-              const hash = hashMatch ? hashMatch[1] : '';
-              
-              parsedCommits.push({
-                type: parsed.type,
-                scope: parsed.scope || '',
-                message: parsed.subject || cleanLine,
-                pr: prRef,
-                hash: hash,
-                author: ''
-              });
-            } else {
-              console.log(`Failed to parse line: "${line}" 💅`);
-            }
-          }
-        } catch (parseError) {
-          console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
-        }
-      });
-      
-      if (parsedCommits.length > 0) {
-        console.log(`Extracted ${parsedCommits.length} commits from markdown format 💁‍♀️`);
-      } else {
-        console.log(`Couldn't extract commit info from changelog string 💅`);
-      }
-    }
-  } catch (error) {
-    console.log(`Error processing changelog: ${error.message} 💁‍♀️`);
-    parsedCommits = [];
-  }
+  // Parse changelog string into commit objects
+  const parsedCommits = parseChangelogString(changelog);
   
   // Convert parsed commits to changelog entries
   const entries = commitsToChangelogEntries(parsedCommits);
-  
-  // Ensure entries is an array before processing
-  if (!Array.isArray(entries)) {
-    console.log('Warning: entries is not an array in generateFileChangelog! 💅 Type:', typeof entries);
-    return `# Changelog\n\n## ${newVersion} (${new Date().toISOString().split('T')[0]})\n\nNo valid entries found.\n`;
-  }
-  
-  // If we couldn't extract any valid entries, add a fallback entry
-  if (entries.length === 0) {
-    console.log('No valid entries extracted in generateFileChangelog, adding fallback entry 💁‍♀️');
-    entries.push({
-      type: 'chore',
-      scope: 'release',
-      description: 'Version bump',
-      pr: '',
-      commit: 'fallback',
-      author: ''
-    });
-  }
   
   // Format entries as markdown list items
   const markdownContent = entries.map(entry => {
@@ -719,5 +518,6 @@ module.exports = {
   parseChangelogTable,
   mergeChangelogEntries,
   updatePRDescriptionWithChangelog,
-  generateFileChangelog
+  generateFileChangelog,
+  parseChangelogString
 };
