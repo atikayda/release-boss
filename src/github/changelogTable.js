@@ -500,26 +500,26 @@ function generateFileChangelog(changelog, newVersion, baseContent = '') {
         }
         
         try {
-          // Look for markdown-formatted commit lines
-          // Example: * **feat(scope):** description (#123) (abcd123)
-          // or: * **changelog:** implement PR-based changelog tracking system ([6b515af](...))  
-          const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+\(\[([a-f0-9]+)\]|\s+\(([a-f0-9]+)\))?/;
-          const match = line.match(commitRegex);
+          // Try both conventional and non-conventional formats
+          // First, try conventional format (with ** and type/scope)
+          const conventionalRegex = /^\*\s+\*\*([^\(]+)(?:\(([^\)]+)\))?:\*\*\s+(.+?)\s+\(\[([a-f0-9]+)\]/;
+          // For non-conventional format (without ** and type/scope)
+          const nonConventionalRegex = /^\*\s+([^\[\(]+)\s+\(\[([a-f0-9]+)\]/;
           
+          // Try conventional format first
+          let match = line.match(conventionalRegex);
           if (match) {
             // Extract the type, scope, and message
             const type = match[1]?.trim();
             const scope = match[2]?.trim() || '';
             const message = match[3]?.trim() || '';
-            
-            // Extract commit hash (could be in different formats)
-            const hash = match[4] || match[5] || '';
+            const hash = match[4] || '';
             
             // Extract PR number if present
             const prMatch = line.match(/#(\d+)/);
             const prRef = prMatch ? `#${prMatch[1]}` : '';
             
-            console.log(`Successfully extracted commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
+            console.log(`Successfully extracted conventional commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
             
             parsedCommits.push({
               type: type,
@@ -529,6 +529,76 @@ function generateFileChangelog(changelog, newVersion, baseContent = '') {
               hash: hash,
               author: ''
             });
+          } 
+          // If conventional format fails, try non-conventional format
+          else {
+            match = line.match(nonConventionalRegex);
+            if (match) {
+              const message = match[1]?.trim();
+              const hash = match[2] || '';
+              
+              // Try to extract type and scope from message using conventional-commits-parser
+              try {
+                const parsed = conventionalCommitsParser.sync(message, {
+                  headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+                  headerCorrespondence: ['type', 'scope', 'subject'],
+                  noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+                  revertPattern: /^revert:\s([\s\S]*?)/,
+                  revertCorrespondence: ['header'],
+                  issuePrefixes: ['#']
+                });
+                
+                // Extract PR number if present
+                const prMatch = line.match(/#(\d+)/);
+                const prRef = prMatch ? `#${prMatch[1]}` : '';
+                
+                if (parsed && parsed.type) {
+                  console.log(`Successfully extracted non-conventional commit with parser: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+                  
+                  parsedCommits.push({
+                    type: parsed.type,
+                    scope: parsed.scope || '',
+                    message: parsed.subject || message,
+                    pr: prRef,
+                    hash: hash,
+                    author: ''
+                  });
+                } else {
+                  // If parsing fails, use a default type
+                  console.log(`Successfully extracted non-conventional commit: message=${message} 💁‍♀️`);
+                  
+                  // Try to guess the type from the message
+                  let type = 'chore';
+                  if (message.includes('fix') || message.includes('bug')) type = 'fix';
+                  if (message.includes('feat') || message.includes('add')) type = 'feat';
+                  
+                  parsedCommits.push({
+                    type: type,
+                    scope: '',
+                    message: message,
+                    pr: prRef,
+                    hash: hash,
+                    author: ''
+                  });
+                }
+              } catch (parseError) {
+                console.log(`Error parsing non-conventional commit: ${parseError.message} 💅`);
+                
+                // Extract PR number if present
+                const prMatch = line.match(/#(\d+)/);
+                const prRef = prMatch ? `#${prMatch[1]}` : '';
+                
+                // Add with default type
+                parsedCommits.push({
+                  type: 'chore',
+                  scope: '',
+                  message: message,
+                  pr: prRef,
+                  hash: hash,
+                  author: ''
+                });
+              }
+            }
           } else {
             // If the regex didn't match, try using conventional-commits-parser as a fallback
             // Clean up the line if it's in markdown format
