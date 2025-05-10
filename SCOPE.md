@@ -17,6 +17,8 @@ Release Boss (she/her) handles the following tasks with style and sass:
    - Creates beautifully formatted changelogs organized by commit type
    - Customizable section titles with emoji support
    - Links to commits and PRs for easy reference
+   - Maintains a structured changelog table in PR descriptions
+   - Supports both machine-readable and human-editable formats
 
 3. **Flexible Version Updates** 🔄
    - Updates version references in files using inline templates
