@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 (2025-05-10)
+
+* **changelog:** implement PR-based changelog tracking system ([6b515af](https://github.com/atikayda/release-boss/commit/6b515afcfbc0b519b2f2037fcef7db34cd57e72a))  6b515af
+* **pr:** correct variable name in PR creation process ([e3fc5e4](https://github.com/atikayda/release-boss/commit/e3fc5e4aac81eb1ef846c9ae11cc133629fc0a9e))  e3fc5e4
+* **changelog:** add defensive programming to changelog table functions ([88672b6](https://github.com/atikayda/release-boss/commit/88672b67a4c478f99ba4fc12f2f6536e8e8eb1bc))  88672b6
+* **chore:** rename commits parameter to changelog to match actual type 💅 ([877cd5d](https://github.com/atikayda/release-boss/commit/877cd5d1128fe1dd217f8adba50edb1e74e3d2a6))  877cd5d
+* **chore:** enhance commitsToChangelogEntries to handle different commit structures 💁‍♀️ ([45fd00d](https://github.com/atikayda/release-boss/commit/45fd00dc6e8762bb83f10ca754725c9f23f42d0e))  45fd00d
+* **feat:** use conventional commits parser instead ([a9de56e](https://github.com/atikayda/release-boss/commit/a9de56e88303cc6b7b22cdaddd9d622fe5b8b1a3))  a9de56e
+* **changelog:** improve parsing of formatted changelog content ([7614a07](https://github.com/atikayda/release-boss/commit/7614a07b512418ede3a3851a02509dc5f33c93e4))  7614a07
+* **chore:** changelog parsing ([aeb9935](https://github.com/atikayda/release-boss/commit/aeb993550678263c50909a434e1748250fee6043))  aeb9935
+* **chore:** changelog parsing ([7274475](https://github.com/atikayda/release-boss/commit/72744754d393a62551f5e93bc03230805ee8b07f))  7274475
+
 ## 1.4.5 (2025-04-24)
 
 ## [1.4.5](https://github.com/atikayda/release-boss/compare/v1.4.4...v1.4.5) (2025-04-24)
