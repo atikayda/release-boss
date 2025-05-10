@@ -305,9 +305,9 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
       }
     }
     
-    // If we couldn't parse as JSON, try to extract commit info using conventional-commits-parser
+    // If we couldn't parse as JSON, try to extract commit info from the formatted changelog
     if (parsedCommits.length === 0) {
-      console.log(`Attempting to parse changelog with conventional-commits-parser 💅`);
+      console.log(`Attempting to parse formatted changelog 💅`);
       
       // Split the changelog into lines and process each line
       const lines = changelog.split('\n');
@@ -318,44 +318,78 @@ function updatePRDescriptionWithChangelog(description, changelog, config) {
       }
       
       lines.forEach(line => {
-        // Skip empty lines
-        if (!line.trim()) return;
+        // Skip empty lines or section headers (lines starting with #)
+        if (!line.trim() || line.trim().startsWith('#')) {
+          return;
+        }
         
         try {
-          // Clean up the line if it's in markdown format
-          let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
+          // Look for markdown-formatted commit lines
+          // Example: * **feat(scope):** description (#123) (abcd123)
+          // or: * **changelog:** implement PR-based changelog tracking system ([6b515af](...))
+          const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+\(\[([a-f0-9]+)\]|\s+\(([a-f0-9]+)\))?/;
+          const match = line.match(commitRegex);
           
-          // Parse with conventional-commits-parser
-          const parsed = conventionalCommitsParser.sync(cleanLine, {
-            headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
-            headerCorrespondence: ['type', 'scope', 'subject'],
-            noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
-            revertPattern: /^revert:\s([\s\S]*?)/,
-            revertCorrespondence: ['header'],
-            issuePrefixes: ['#']
-          });
-          
-          if (parsed && parsed.type) {
-            console.log(`Successfully parsed commit: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+          if (match) {
+            // Extract the type, scope, and message
+            const type = match[1]?.trim();
+            const scope = match[2]?.trim() || '';
+            const message = match[3]?.trim() || '';
+            
+            // Extract commit hash (could be in different formats)
+            const hash = match[4] || match[5] || '';
             
             // Extract PR number if present
-            const prMatch = cleanLine.match(/#(\d+)/);
+            const prMatch = line.match(/#(\d+)/);
             const prRef = prMatch ? `#${prMatch[1]}` : '';
             
-            // Extract commit hash if present
-            const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
-            const hash = hashMatch ? hashMatch[1] : '';
+            console.log(`Successfully extracted commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
             
             parsedCommits.push({
-              type: parsed.type,
-              scope: parsed.scope || '',
-              message: parsed.subject || cleanLine,
+              type: type,
+              scope: scope,
+              message: message,
               pr: prRef,
               hash: hash,
               author: ''
             });
           } else {
-            console.log(`Failed to parse line as conventional commit: "${line}" 💅`);
+            // If the regex didn't match, try using conventional-commits-parser as a fallback
+            // Clean up the line if it's in markdown format
+            let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
+            
+            // Parse with conventional-commits-parser
+            const parsed = conventionalCommitsParser.sync(cleanLine, {
+              headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+              headerCorrespondence: ['type', 'scope', 'subject'],
+              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+              revertPattern: /^revert:\s([\s\S]*?)/,
+              revertCorrespondence: ['header'],
+              issuePrefixes: ['#']
+            });
+            
+            if (parsed && parsed.type) {
+              console.log(`Successfully parsed commit with library: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+              
+              // Extract PR number if present
+              const prMatch = cleanLine.match(/#(\d+)/);
+              const prRef = prMatch ? `#${prMatch[1]}` : '';
+              
+              // Extract commit hash if present
+              const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
+              const hash = hashMatch ? hashMatch[1] : '';
+              
+              parsedCommits.push({
+                type: parsed.type,
+                scope: parsed.scope || '',
+                message: parsed.subject || cleanLine,
+                pr: prRef,
+                hash: hash,
+                author: ''
+              });
+            } else {
+              console.log(`Failed to parse line: "${line}" 💅`);
+            }
           }
         } catch (parseError) {
           console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
@@ -447,24 +481,94 @@ function generateFileChangelog(changelog, newVersion, baseContent = '') {
       }
     }
     
-    // If we couldn't parse as JSON, try to extract commit info from markdown format
+    // If we couldn't parse as JSON, try to extract commit info from the formatted changelog
     if (parsedCommits.length === 0) {
-      // Simple extraction of commit info from markdown lines
-      // Example: * **feat(scope):** description (#123) (abcd123)
+      console.log(`Attempting to parse formatted changelog 💅`);
+      
+      // Split the changelog into lines and process each line
       const lines = changelog.split('\n');
-      const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+#(\d+))?(?:\s+\(([a-f0-9]+)\))?/;
+      
+      // Log the first few lines for debugging
+      if (lines.length > 0) {
+        console.log(`First line of changelog: "${lines[0]}" 💁‍♀️`);
+      }
       
       lines.forEach(line => {
-        const match = line.match(commitRegex);
-        if (match) {
-          parsedCommits.push({
-            type: match[1] || 'unknown',
-            scope: match[2] || '',
-            message: match[3] || '',
-            pr: match[4] ? `#${match[4]}` : '',
-            hash: match[5] || '',
-            author: ''
-          });
+        // Skip empty lines or section headers (lines starting with #)
+        if (!line.trim() || line.trim().startsWith('#')) {
+          return;
+        }
+        
+        try {
+          // Look for markdown-formatted commit lines
+          // Example: * **feat(scope):** description (#123) (abcd123)
+          // or: * **changelog:** implement PR-based changelog tracking system ([6b515af](...))  
+          const commitRegex = /\*\s+\*\*([^\(]*)(?:\(([^\)]*)\))?:\*\*\s+(.+?)(?:\s+\(\[([a-f0-9]+)\]|\s+\(([a-f0-9]+)\))?/;
+          const match = line.match(commitRegex);
+          
+          if (match) {
+            // Extract the type, scope, and message
+            const type = match[1]?.trim();
+            const scope = match[2]?.trim() || '';
+            const message = match[3]?.trim() || '';
+            
+            // Extract commit hash (could be in different formats)
+            const hash = match[4] || match[5] || '';
+            
+            // Extract PR number if present
+            const prMatch = line.match(/#(\d+)/);
+            const prRef = prMatch ? `#${prMatch[1]}` : '';
+            
+            console.log(`Successfully extracted commit: type=${type}, scope=${scope}, message=${message} 💁‍♀️`);
+            
+            parsedCommits.push({
+              type: type,
+              scope: scope,
+              message: message,
+              pr: prRef,
+              hash: hash,
+              author: ''
+            });
+          } else {
+            // If the regex didn't match, try using conventional-commits-parser as a fallback
+            // Clean up the line if it's in markdown format
+            let cleanLine = line.replace(/^\s*\*\s+\*\*/, '').replace(/\*\*\s+/, '');
+            
+            // Parse with conventional-commits-parser
+            const parsed = conventionalCommitsParser.sync(cleanLine, {
+              headerPattern: /^(\w*)(?:\(([\w\$\.\-\*\s]*)\))?\: (.*)$/,
+              headerCorrespondence: ['type', 'scope', 'subject'],
+              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE'],
+              revertPattern: /^revert:\s([\s\S]*?)/,
+              revertCorrespondence: ['header'],
+              issuePrefixes: ['#']
+            });
+            
+            if (parsed && parsed.type) {
+              console.log(`Successfully parsed commit with library: type=${parsed.type}, subject=${parsed.subject || ''} 💁‍♀️`);
+              
+              // Extract PR number if present
+              const prMatch = cleanLine.match(/#(\d+)/);
+              const prRef = prMatch ? `#${prMatch[1]}` : '';
+              
+              // Extract commit hash if present
+              const hashMatch = cleanLine.match(/\(([a-f0-9]+)\)/);
+              const hash = hashMatch ? hashMatch[1] : '';
+              
+              parsedCommits.push({
+                type: parsed.type,
+                scope: parsed.scope || '',
+                message: parsed.subject || cleanLine,
+                pr: prRef,
+                hash: hash,
+                author: ''
+              });
+            } else {
+              console.log(`Failed to parse line: "${line}" 💅`);
+            }
+          }
+        } catch (parseError) {
+          console.log(`Error parsing line "${line}": ${parseError.message} 💁‍♀️`);
         }
       });
       
